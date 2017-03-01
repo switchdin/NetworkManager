@@ -49,12 +49,12 @@ typedef struct _NMActiveConnectionPrivate {
 	bool is_default6:1;
 	bool state_set:1;
 	bool vpn:1;
-	bool master_ready:1;
 
 	/* TODO: when the user updates a connection with an extern activation
 	 * type, the activation type must be updated to FULL. */
 	NMActivationType activation_type:3;
 
+	bool master_ready:1;
 	NMAuthSubject *subject;
 	NMActiveConnection *master;
 
@@ -105,13 +105,8 @@ G_DEFINE_ABSTRACT_TYPE (NMActiveConnection, nm_active_connection, NM_TYPE_EXPORT
 
 #define NM_ACTIVE_CONNECTION_GET_PRIVATE(self) _NM_GET_PRIVATE_PTR(self, NMActiveConnection, NM_IS_ACTIVE_CONNECTION)
 
-/*****************************************************************************/
-
 static void check_master_ready (NMActiveConnection *self);
 static void _device_cleanup (NMActiveConnection *self);
-static void _settings_connection_notify_flags (NMSettingsConnection *settings_connection,
-                                               GParamSpec *param,
-                                               NMActiveConnection *self);
 
 /*****************************************************************************/
 
@@ -189,15 +184,12 @@ _set_settings_connection (NMActiveConnection *self, NMSettingsConnection *connec
 	if (priv->settings_connection) {
 		g_signal_handlers_disconnect_by_func (priv->settings_connection, _settings_connection_updated, self);
 		g_signal_handlers_disconnect_by_func (priv->settings_connection, _settings_connection_removed, self);
-		g_signal_handlers_disconnect_by_func (priv->settings_connection, _settings_connection_notify_flags, self);
 		g_clear_object (&priv->settings_connection);
 	}
 	if (connection) {
 		priv->settings_connection = g_object_ref (connection);
 		g_signal_connect (connection, NM_SETTINGS_CONNECTION_UPDATED_INTERNAL, (GCallback) _settings_connection_updated, self);
 		g_signal_connect (connection, NM_SETTINGS_CONNECTION_REMOVED, (GCallback) _settings_connection_removed, self);
-		if (nm_active_connection_get_activation_type (self) == NM_ACTIVATION_TYPE_EXTERNAL)
-			g_signal_connect (connection, "notify::"NM_SETTINGS_CONNECTION_FLAGS, (GCallback) _settings_connection_notify_flags, self);
 	}
 }
 
@@ -224,14 +216,6 @@ nm_active_connection_set_state (NMActiveConnection *self,
 	_LOGD ("set state %s (was %s)",
 	       state_to_string (new_state),
 	       state_to_string (priv->state));
-
-	if (   new_state == NM_ACTIVE_CONNECTION_STATE_ACTIVATED
-	    && priv->activation_type == NM_ACTIVATION_TYPE_ASSUME) {
-		/* assuming connections mean to gracefully take over an externally
-		 * configured device. Once activation is complete, an assumed
-		 * activation *is* the same as a full activation. */
-		_set_activation_type (self, NM_ACTIVATION_TYPE_FULL);
-	}
 
 	old_state = priv->state;
 	priv->state = new_state;
@@ -585,10 +569,8 @@ nm_active_connection_set_device (NMActiveConnection *self, NMDevice *device)
 		g_signal_connect (device, "notify::" NM_DEVICE_METERED,
 		                  G_CALLBACK (device_metered_changed), self);
 
-		if (priv->activation_type != NM_ACTIVATION_TYPE_EXTERNAL) {
-			priv->pending_activation_id = g_strdup_printf (NM_PENDING_ACTIONPREFIX_ACTIVATION"%p", (void *)self);
-			nm_device_add_pending_action (device, priv->pending_activation_id, TRUE);
-		}
+		priv->pending_activation_id = g_strdup_printf (NM_PENDING_ACTIONPREFIX_ACTIVATION"%p", (void *)self);
+		nm_device_add_pending_action (device, priv->pending_activation_id, TRUE);
 	} else {
 		/* The ActiveConnection's device can only be cleared after the
 		 * connection is activated.
@@ -731,55 +713,14 @@ nm_active_connection_set_master (NMActiveConnection *self, NMActiveConnection *m
 	check_master_ready (self);
 }
 
+/*****************************************************************************/
+
 NMActivationType
 nm_active_connection_get_activation_type (NMActiveConnection *self)
 {
 	g_return_val_if_fail (NM_IS_ACTIVE_CONNECTION (self), NM_ACTIVATION_TYPE_FULL);
 
 	return NM_ACTIVE_CONNECTION_GET_PRIVATE (self)->activation_type;
-}
-
-static void
-_set_activation_type (NMActiveConnection *self,
-                      NMActivationType activation_type)
-{
-	NMActiveConnectionPrivate *priv = NM_ACTIVE_CONNECTION_GET_PRIVATE (self);
-
-	if (priv->activation_type == activation_type)
-		return;
-
-	_LOGD ("update activation type from %s to %s",
-	       nm_activation_type_to_string (priv->activation_type),
-	       nm_activation_type_to_string (activation_type));
-	priv->activation_type = activation_type;
-}
-
-gboolean
-nm_active_connection_has_activation_type_assume_or_external (NMActiveConnection *self)
-{
-	return NM_IN_SET (nm_active_connection_get_activation_type (self),
-	                  NM_ACTIVATION_TYPE_ASSUME,
-	                  NM_ACTIVATION_TYPE_EXTERNAL);
-}
-
-/*****************************************************************************/
-
-static void
-_settings_connection_notify_flags (NMSettingsConnection *settings_connection,
-                                   GParamSpec *param,
-                                   NMActiveConnection *self)
-{
-	nm_assert (NM_IS_ACTIVE_CONNECTION (self));
-	nm_assert (NM_IS_SETTINGS_CONNECTION (settings_connection));
-	nm_assert (nm_active_connection_get_activation_type (self) == NM_ACTIVATION_TYPE_EXTERNAL);
-	nm_assert (NM_ACTIVE_CONNECTION_GET_PRIVATE (self)->settings_connection == settings_connection);
-
-	if (nm_settings_connection_get_nm_generated (settings_connection))
-		return;
-
-	g_signal_handlers_disconnect_by_func (settings_connection, _settings_connection_notify_flags, self);
-	_set_activation_type (self, NM_ACTIVATION_TYPE_FULL);
-	nm_device_reapply_settings_immediately (nm_active_connection_get_device (self));
 }
 
 /*****************************************************************************/
@@ -1136,9 +1077,7 @@ set_property (GObject *object, guint prop_id,
 	case PROP_INT_ACTIVATION_TYPE:
 		/* construct-only */
 		i = g_value_get_int (value);
-		if (!NM_IN_SET (i, NM_ACTIVATION_TYPE_FULL,
-		                   NM_ACTIVATION_TYPE_ASSUME,
-		                   NM_ACTIVATION_TYPE_EXTERNAL))
+		if (!NM_IN_SET (i, NM_ACTIVATION_TYPE_FULL, NM_ACTIVATION_TYPE_ASSUME))
 			g_return_if_reached ();
 		priv->activation_type = (NMActivationType) i;
 		break;
@@ -1189,8 +1128,10 @@ constructed (GObject *object)
 
 	G_OBJECT_CLASS (nm_active_connection_parent_class)->constructed (object);
 
-	if (!priv->applied_connection && priv->settings_connection)
-		priv->applied_connection = nm_simple_connection_new_clone (NM_CONNECTION (priv->settings_connection));
+	if (!priv->applied_connection && priv->settings_connection) {
+		priv->applied_connection =
+			nm_simple_connection_new_clone ((NMConnection *) priv->settings_connection);
+	}
 
 	if (priv->applied_connection)
 		nm_connection_clear_secrets (priv->applied_connection);
@@ -1386,7 +1327,7 @@ nm_active_connection_class_init (NMActiveConnectionClass *ac_class)
 	obj_properties[PROP_INT_ACTIVATION_TYPE] =
 	     g_param_spec_int (NM_ACTIVE_CONNECTION_INT_ACTIVATION_TYPE, "", "",
 	                       NM_ACTIVATION_TYPE_FULL,
-	                       NM_ACTIVATION_TYPE_EXTERNAL,
+	                       NM_ACTIVATION_TYPE_ASSUME,
 	                       NM_ACTIVATION_TYPE_FULL,
 	                       G_PARAM_WRITABLE |
 	                       G_PARAM_CONSTRUCT_ONLY |
