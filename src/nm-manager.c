@@ -2398,7 +2398,7 @@ nm_manager_get_device_paths (NMManager *self)
 	return (const char **) g_ptr_array_free (paths, FALSE);
 }
 
-static NMDevice *
+NMDevice *
 nm_manager_get_connection_device (NMManager *self,
                                   NMConnection *connection)
 {

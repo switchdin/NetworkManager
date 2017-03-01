@@ -206,6 +206,7 @@ typedef struct _NMDevicePrivate {
 		NMDeviceState state;
 		NMDeviceStateReason reason;
 	} queued_state;
+
 	guint queued_ip4_config_id;
 	guint queued_ip6_config_id;
 	GSList *pending_actions;
@@ -289,14 +290,15 @@ typedef struct _NMDevicePrivate {
 	guint           link_connected_id;
 	guint           link_disconnected_id;
 	guint           carrier_defer_id;
-	bool            carrier;
 	guint           carrier_wait_id;
-	bool            ignore_carrier;
 	gulong          ignore_carrier_id;
 	guint32         mtu;
 	guint32         ip6_mtu;
 	guint32 mtu_initial;
 	guint32 ip6_mtu_initial;
+
+	bool            carrier:1;
+	bool            ignore_carrier:1;
 
 	bool mtu_initialized:1;
 
@@ -1724,7 +1726,7 @@ nm_device_master_release_one_slave (NMDevice *self, NMDevice *slave, gboolean co
 
 	info = find_slave_info (self, slave);
 
-	_LOGt (LOGD_CORE, "master: release one slave %p/%s%s", slave, nm_device_get_iface (slave),
+	_LOGT (LOGD_CORE, "master: release one slave %p/%s%s", slave, nm_device_get_iface (slave),
 	       !info ? " (not registered)" : "");
 
 	if (!info)
@@ -3004,7 +3006,7 @@ nm_device_master_add_slave (NMDevice *self, NMDevice *slave, gboolean configure)
 
 	info = find_slave_info (self, slave);
 
-	_LOGt (LOGD_CORE, "master: add one slave %p/%s%s", slave, nm_device_get_iface (slave),
+	_LOGT (LOGD_CORE, "master: add one slave %p/%s%s", slave, nm_device_get_iface (slave),
 	       info ? " (already registered)" : "");
 
 	if (configure)
@@ -3247,15 +3249,19 @@ nm_device_slave_notify_release (NMDevice *self, NMDeviceStateReason reason)
 
 	if (   priv->state > NM_DEVICE_STATE_DISCONNECTED
 	    && priv->state <= NM_DEVICE_STATE_ACTIVATED) {
-		if (nm_device_state_reason_check (reason) == NM_DEVICE_STATE_REASON_DEPENDENCY_FAILED) {
+		switch (nm_device_state_reason_check (reason)) {
+		case NM_DEVICE_STATE_REASON_DEPENDENCY_FAILED:
 			new_state = NM_DEVICE_STATE_FAILED;
 			master_status = "failed";
-		} else if (nm_device_state_reason_check (reason) == NM_DEVICE_STATE_REASON_USER_REQUESTED) {
+			break;
+		case NM_DEVICE_STATE_REASON_USER_REQUESTED:
 			new_state = NM_DEVICE_STATE_DEACTIVATING;
 			master_status = "deactivated by user request";
-		} else {
+			break;
+		default:
 			new_state = NM_DEVICE_STATE_DISCONNECTED;
 			master_status = "deactivated";
+			break;
 		}
 
 		_LOGD (LOGD_DEVICE, "Activation: connection '%s' master %s",
@@ -3919,11 +3925,13 @@ recheck_available (gpointer user_data)
 {
 	NMDevice *self = NM_DEVICE (user_data);
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
-	gboolean now_available = nm_device_is_available (self, NM_DEVICE_CHECK_DEV_AVAILABLE_NONE);
+	gboolean now_available;
 	NMDeviceState state = nm_device_get_state (self);
 	NMDeviceState new_state = NM_DEVICE_STATE_UNKNOWN;
 
 	priv->recheck_available.call_id = 0;
+
+	now_available = nm_device_is_available (self, NM_DEVICE_CHECK_DEV_AVAILABLE_NONE);
 
 	if (state == NM_DEVICE_STATE_UNAVAILABLE && now_available) {
 		new_state = NM_DEVICE_STATE_DISCONNECTED;
