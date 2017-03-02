@@ -18,12 +18,14 @@
  * (C) Copyright 2008 - 2012 Red Hat, Inc.
  */
 
-#ifndef _UTILS_H_
-#define _UTILS_H_
+#ifndef __NMS_IFCFG_RH_UTILS_H__
+#define __NMS_IFCFG_RH_UTILS_H__
 
 #include "nm-connection.h"
 
 #include "shvar.h"
+
+/*****************************************************************************/
 
 #define NM_IFCFG_CONNECTION_LOG_PATH(path)  ((path) ?: "in-memory")
 #define NM_IFCFG_CONNECTION_LOG_FMT         "%s (%s,\"%s\")"
@@ -54,5 +56,31 @@ gboolean utils_is_ifcfg_alias_file (const char *alias, const char *ifcfg);
 
 char *utils_detect_ifcfg_path (const char *path, gboolean only_ifcfg);
 
-#endif  /* _UTILS_H_ */
+/******************************************************************************/
 
+typedef struct _NMSIfcfgRhPack NMSIfcfgRhPack;
+
+NMSIfcfgRhPack *nms_ifcfg_rh_pack_new_open_file (const char *filename, GError **error);
+NMSIfcfgRhPack *nms_ifcfg_rh_pack_new_create_file (const char *filename);
+void nms_ifcfg_rh_pack_unref (NMSIfcfgRhPack *self);
+
+shvarFile *nms_ifcfg_rh_pack_get_main (NMSIfcfgRhPack *self);
+const char *nms_ifcfg_rh_pack_get_filename (NMSIfcfgRhPack *self);
+
+gboolean nms_ifcfg_rh_pack_write_file (NMSIfcfgRhPack *self, GError **error);
+
+static inline void
+_nm_auto_ifcfg_rh_pack_unref (NMSIfcfgRhPack **p_s)
+{
+	if (*p_s) {
+		int errsv = errno;
+
+		nms_ifcfg_rh_pack_unref (*p_s);
+		errno = errsv;
+	}
+}
+#define nm_auto_ifcfg_rh_pack_unref nm_auto(_nm_auto_ifcfg_rh_pack_unref)
+
+/******************************************************************************/
+
+#endif /* __NMS_IFCFG_RH_UTILS_H__ */

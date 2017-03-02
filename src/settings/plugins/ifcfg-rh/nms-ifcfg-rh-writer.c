@@ -2283,7 +2283,7 @@ write_ip4_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 }
 
 static void
-write_ip4_aliases (NMConnection *connection, char *base_ifcfg_path)
+write_ip4_aliases (NMConnection *connection, const char *base_ifcfg_path)
 {
 	NMSettingIPConfig *s_ip4;
 	gs_free char *base_ifcfg_dir = NULL, *base_ifcfg_name = NULL;
@@ -2719,8 +2719,8 @@ write_connection (NMConnection *connection,
                   GError **error)
 {
 	NMSettingConnection *s_con;
-	nm_auto_shvar_file_close shvarFile *ifcfg = NULL;
-	gs_free char *ifcfg_name = NULL;
+	nm_auto_ifcfg_rh_pack_unref NMSIfcfgRhPack *ifcfg_pack = NULL;
+	shvarFile *ifcfg;
 	const char *type;
 	gboolean no_8021x = FALSE;
 	gboolean wired = FALSE;
@@ -2737,13 +2737,12 @@ write_connection (NMConnection *connection,
 
 	if (filename) {
 		/* For existing connections, 'filename' should be full path to ifcfg file */
-		ifcfg = svOpenFile (filename, error);
-		if (!ifcfg)
+		ifcfg_pack = nms_ifcfg_rh_pack_new_open_file (filename, error);
+		if (!ifcfg_pack)
 			return FALSE;
-
-		ifcfg_name = g_strdup (filename);
 	} else {
-		char *escaped;
+		gs_free char *ifcfg_name = NULL;
+		gs_free char *escaped = NULL;
 
 		escaped = escape_id (nm_setting_connection_get_id (s_con));
 		ifcfg_name = g_strdup_printf ("%s/ifcfg-%s", ifcfg_dir, escaped);
@@ -2764,7 +2763,6 @@ write_connection (NMConnection *connection,
 				nm_clear_g_free (&ifcfg_name);
 			}
 		}
-		g_free (escaped);
 
 		if (ifcfg_name == NULL) {
 			g_set_error_literal (error, NM_SETTINGS_ERROR, NM_SETTINGS_ERROR_FAILED,
@@ -2772,8 +2770,10 @@ write_connection (NMConnection *connection,
 			return FALSE;
 		}
 
-		ifcfg = svCreateFile (ifcfg_name);
+		ifcfg_pack = nms_ifcfg_rh_pack_new_create_file (ifcfg_name);
 	}
+
+	ifcfg = nms_ifcfg_rh_pack_get_main (ifcfg_pack);
 
 	type = nm_setting_connection_get_connection_type (s_con);
 	if (!type) {
@@ -2840,7 +2840,7 @@ write_connection (NMConnection *connection,
 
 	if (!write_ip4_setting (connection, ifcfg, error))
 		return FALSE;
-	write_ip4_aliases (connection, ifcfg_name);
+	write_ip4_aliases (connection, nms_ifcfg_rh_pack_get_filename (ifcfg_pack));
 
 	if (!write_ip6_setting (connection, ifcfg, error))
 		return FALSE;
@@ -2850,7 +2850,7 @@ write_connection (NMConnection *connection,
 
 	write_connection_setting (s_con, ifcfg);
 
-	if (!svWriteFile (ifcfg, 0644, error))
+	if (!nms_ifcfg_rh_pack_write_file (ifcfg_pack, error))
 		return FALSE;
 
 	if (out_reread || out_reread_same) {
@@ -2859,15 +2859,16 @@ write_connection (NMConnection *connection,
 		gs_free char *unhandled = NULL;
 		gboolean reread_same = FALSE;
 
-		reread = connection_from_file (ifcfg_name, &unhandled, &local, NULL);
+		reread = connection_from_file (nms_ifcfg_rh_pack_get_filename (ifcfg_pack),
+		                               &unhandled, &local, NULL);
 
 		if (unhandled) {
 			_LOGW ("failure to re-read the new connection from file \"%s\": %s",
-			       ifcfg_name, "connection is unhandled");
+			       nms_ifcfg_rh_pack_get_filename (ifcfg_pack), "connection is unhandled");
 			g_clear_object (&reread);
 		} else if (!reread) {
 			_LOGW ("failure to re-read the new connection from file \"%s\": %s",
-			       ifcfg_name, local ? local->message : "<unknown>");
+			       nms_ifcfg_rh_pack_get_filename (ifcfg_pack), local ? local->message : "<unknown>");
 		} else {
 			if (out_reread_same) {
 				if (nm_connection_compare (reread, connection, NM_SETTING_COMPARE_FLAG_EXACT))
@@ -2888,8 +2889,8 @@ write_connection (NMConnection *connection,
 	}
 
 	/* Only return the filename if this was a newly written ifcfg */
-	if (out_filename && !filename)
-		*out_filename = g_steal_pointer (&ifcfg_name);
+	if (!filename)
+		NM_SET_OUT (out_filename, g_strdup (nms_ifcfg_rh_pack_get_filename (ifcfg_pack)));
 
 	return TRUE;
 }

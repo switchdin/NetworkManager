@@ -364,3 +364,81 @@ utils_detect_ifcfg_path (const char *path, gboolean only_ifcfg)
 		return NULL;
 	return utils_get_ifcfg_path (path);
 }
+
+/******************************************************************************/
+
+struct _NMSIfcfgRhPack {
+	shvarFile *main_ifcfg;
+};
+
+NMSIfcfgRhPack *
+nms_ifcfg_rh_pack_new_open_file (const char *filename, GError **error)
+{
+	NMSIfcfgRhPack *self;
+	shvarFile *ifcfg;
+
+	g_return_val_if_fail (filename, NULL);
+	g_return_val_if_fail (!error || !*error, NULL);
+
+	ifcfg = svOpenFile (filename, error);
+	if (!ifcfg)
+		return NULL;
+
+	self = g_slice_new0 (NMSIfcfgRhPack);
+	self->main_ifcfg = ifcfg;
+	return self;
+}
+
+NMSIfcfgRhPack *
+nms_ifcfg_rh_pack_new_create_file (const char *filename)
+{
+	NMSIfcfgRhPack *self;
+	shvarFile *ifcfg;
+
+	g_return_val_if_fail (filename, NULL);
+
+	ifcfg = svCreateFile (filename);
+	if (!ifcfg)
+		g_return_val_if_reached (NULL);
+
+	self = g_slice_new0 (NMSIfcfgRhPack);
+	self->main_ifcfg = ifcfg;
+	return self;
+}
+
+void
+nms_ifcfg_rh_pack_unref (NMSIfcfgRhPack *self)
+{
+	g_return_if_fail (self);
+
+	svCloseFile (self->main_ifcfg);
+
+	g_slice_free (NMSIfcfgRhPack, self);
+}
+
+shvarFile *
+nms_ifcfg_rh_pack_get_main (NMSIfcfgRhPack *self)
+{
+	g_return_val_if_fail (self, NULL);
+
+	return self->main_ifcfg;
+}
+
+const char *
+nms_ifcfg_rh_pack_get_filename (NMSIfcfgRhPack *self)
+{
+	g_return_val_if_fail (self, NULL);
+
+	return svFileGetName (self->main_ifcfg);
+}
+
+gboolean
+nms_ifcfg_rh_pack_write_file (NMSIfcfgRhPack *self, GError **error)
+{
+	g_return_val_if_fail (self, FALSE);
+	g_return_val_if_fail (!error || !*error, FALSE);
+
+	if (!svWriteFile (self->main_ifcfg, 0644, error))
+		return FALSE;
+	return TRUE;
+}
