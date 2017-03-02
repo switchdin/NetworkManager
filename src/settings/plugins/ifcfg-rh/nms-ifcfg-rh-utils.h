@@ -67,6 +67,9 @@ void nms_ifcfg_rh_pack_unref (NMSIfcfgRhPack *self);
 shvarFile *nms_ifcfg_rh_pack_get_main (NMSIfcfgRhPack *self);
 const char *nms_ifcfg_rh_pack_get_filename (NMSIfcfgRhPack *self);
 
+void nms_ifcfg_rh_pack_subfile_prune (NMSIfcfgRhPack *self, const char *filename);
+shvarFile *nms_ifcfg_rh_pack_subfile_create (NMSIfcfgRhPack *self, const char *filename);
+
 gboolean nms_ifcfg_rh_pack_write_file (NMSIfcfgRhPack *self, GError **error);
 
 static inline void

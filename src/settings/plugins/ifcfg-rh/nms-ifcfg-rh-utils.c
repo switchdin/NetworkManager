@@ -369,12 +369,30 @@ utils_detect_ifcfg_path (const char *path, gboolean only_ifcfg)
 
 struct _NMSIfcfgRhPack {
 	shvarFile *main_ifcfg;
+	GHashTable *subfiles;
 };
+
+static void
+_sv_close_file (gpointer data)
+{
+	if (data)
+		svCloseFile (data);
+}
+
+static NMSIfcfgRhPack *
+_pack_new (shvarFile *ifcfg)
+{
+	NMSIfcfgRhPack *self;
+
+	self = g_slice_new0 (NMSIfcfgRhPack);
+	self->main_ifcfg = ifcfg;
+	self->subfiles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, _sv_close_file);
+	return self;
+}
 
 NMSIfcfgRhPack *
 nms_ifcfg_rh_pack_new_open_file (const char *filename, GError **error)
 {
-	NMSIfcfgRhPack *self;
 	shvarFile *ifcfg;
 
 	g_return_val_if_fail (filename, NULL);
@@ -383,16 +401,12 @@ nms_ifcfg_rh_pack_new_open_file (const char *filename, GError **error)
 	ifcfg = svOpenFile (filename, error);
 	if (!ifcfg)
 		return NULL;
-
-	self = g_slice_new0 (NMSIfcfgRhPack);
-	self->main_ifcfg = ifcfg;
-	return self;
+	return _pack_new (ifcfg);
 }
 
 NMSIfcfgRhPack *
 nms_ifcfg_rh_pack_new_create_file (const char *filename)
 {
-	NMSIfcfgRhPack *self;
 	shvarFile *ifcfg;
 
 	g_return_val_if_fail (filename, NULL);
@@ -401,9 +415,7 @@ nms_ifcfg_rh_pack_new_create_file (const char *filename)
 	if (!ifcfg)
 		g_return_val_if_reached (NULL);
 
-	self = g_slice_new0 (NMSIfcfgRhPack);
-	self->main_ifcfg = ifcfg;
-	return self;
+	return _pack_new (ifcfg);
 }
 
 void
@@ -412,6 +424,8 @@ nms_ifcfg_rh_pack_unref (NMSIfcfgRhPack *self)
 	g_return_if_fail (self);
 
 	svCloseFile (self->main_ifcfg);
+
+	g_hash_table_destroy (self->subfiles);
 
 	g_slice_free (NMSIfcfgRhPack, self);
 }
@@ -432,11 +446,50 @@ nms_ifcfg_rh_pack_get_filename (NMSIfcfgRhPack *self)
 	return svFileGetName (self->main_ifcfg);
 }
 
+void nms_ifcfg_rh_pack_subfile_prune (NMSIfcfgRhPack *self, const char *filename)
+{
+	g_return_if_fail (self);
+	g_return_if_fail (filename);
+
+	if (!nm_g_hash_table_insert (self->subfiles, g_strdup (filename), NULL))
+		g_return_if_reached ();
+}
+
+shvarFile *
+nms_ifcfg_rh_pack_subfile_create (NMSIfcfgRhPack *self, const char *filename)
+{
+	shvarFile *ifcfg;
+
+	g_return_val_if_fail (self, NULL);
+	g_return_val_if_fail (filename, NULL);
+
+	ifcfg = svCreateFile (filename);
+	if (!nm_g_hash_table_insert (self->subfiles, g_strdup (filename), ifcfg))
+		g_return_val_if_reached (ifcfg);
+	return ifcfg;
+}
+
 gboolean
 nms_ifcfg_rh_pack_write_file (NMSIfcfgRhPack *self, GError **error)
 {
+	GHashTableIter iter;
+	shvarFile *ifcfg;
+	const char *filename;
+
 	g_return_val_if_fail (self, FALSE);
 	g_return_val_if_fail (!error || !*error, FALSE);
+
+	g_hash_table_iter_init (&iter, self->subfiles);
+	while (g_hash_table_iter_next (&iter, (gpointer *) &filename, (gpointer *) &ifcfg)) {
+		if (!ifcfg)
+			unlink (filename);
+	}
+
+	g_hash_table_iter_init (&iter, self->subfiles);
+	while (g_hash_table_iter_next (&iter, NULL, (gpointer *) &ifcfg)) {
+		if (ifcfg)
+			 svWriteFile (ifcfg, 0644, NULL);
+	}
 
 	if (!svWriteFile (self->main_ifcfg, 0644, error))
 		return FALSE;

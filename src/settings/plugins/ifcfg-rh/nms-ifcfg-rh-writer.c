@@ -2283,13 +2283,14 @@ write_ip4_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 }
 
 static void
-write_ip4_aliases (NMConnection *connection, const char *base_ifcfg_path)
+write_ip4_aliases (NMSIfcfgRhPack *ifcfg_pack, NMConnection *connection)
 {
 	NMSettingIPConfig *s_ip4;
 	gs_free char *base_ifcfg_dir = NULL, *base_ifcfg_name = NULL;
 	const char*base_name;
 	int i, num, base_ifcfg_name_len, base_name_len;
 	GDir *dir;
+	const char *base_ifcfg_path = nms_ifcfg_rh_pack_get_filename (ifcfg_pack);
 
 	base_ifcfg_dir = g_path_get_dirname (base_ifcfg_path);
 	base_ifcfg_name = g_path_get_basename (base_ifcfg_path);
@@ -2312,7 +2313,7 @@ write_ip4_aliases (NMConnection *connection, const char *base_ifcfg_path)
 				continue;
 
 			full_path = g_build_filename (base_ifcfg_dir, item, NULL);
-			unlink (full_path);
+			nms_ifcfg_rh_pack_subfile_prune (ifcfg_pack, full_path);
 			g_free (full_path);
 		}
 
@@ -2329,7 +2330,7 @@ write_ip4_aliases (NMConnection *connection, const char *base_ifcfg_path)
 	for (i = 0; i < num; i++) {
 		GVariant *label_var;
 		const char *label, *p;
-		char *path, *tmp;
+		char *path;
 		NMIPAddress *addr;
 		shvarFile *ifcfg;
 
@@ -2351,20 +2352,14 @@ write_ip4_aliases (NMConnection *connection, const char *base_ifcfg_path)
 			continue;
 
 		path = g_strdup_printf ("%s%s", base_ifcfg_path, label + base_name_len);
-		ifcfg = svCreateFile (path);
+		ifcfg = nms_ifcfg_rh_pack_subfile_create (ifcfg_pack, path);
 		g_free (path);
 
 		svSetValueStr (ifcfg, "DEVICE", label);
 
 		addr = nm_setting_ip_config_get_address (s_ip4, i);
 		svSetValueStr (ifcfg, "IPADDR", nm_ip_address_get_address (addr));
-
-		tmp = g_strdup_printf ("%u", nm_ip_address_get_prefix (addr));
-		svSetValueStr (ifcfg, "PREFIX", tmp);
-		g_free (tmp);
-
-		svWriteFile (ifcfg, 0644, NULL);
-		svCloseFile (ifcfg);
+		svSetValueInt64 (ifcfg, "PREFIX", nm_ip_address_get_prefix (addr));
 	}
 }
 
@@ -2840,7 +2835,7 @@ write_connection (NMConnection *connection,
 
 	if (!write_ip4_setting (connection, ifcfg, error))
 		return FALSE;
-	write_ip4_aliases (connection, nms_ifcfg_rh_pack_get_filename (ifcfg_pack));
+	write_ip4_aliases (ifcfg_pack, connection);
 
 	if (!write_ip6_setting (connection, ifcfg, error))
 		return FALSE;
