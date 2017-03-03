@@ -8678,7 +8678,7 @@ reapply_cb (NMDevice *self,
 	}
 
 	if (error) {
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, subject, error->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, NULL, subject, error->message);
 		g_dbus_method_invocation_return_gerror (context, error);
 		return;
 	}
@@ -8687,11 +8687,11 @@ reapply_cb (NMDevice *self,
 	                                   connection ? : (NMConnection *) nm_device_get_settings_connection (self),
 	                                   version_id,
 	                                   &local)) {
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, subject, local->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, NULL, subject, local->message);
 		g_dbus_method_invocation_take_error (context, local);
 		local = NULL;
 	} else {
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, TRUE, subject, NULL);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, TRUE, NULL, subject, NULL);
 		g_dbus_method_invocation_return_value (context, NULL);
 	}
 }
@@ -8714,7 +8714,7 @@ impl_device_reapply (NMDevice *self,
 		error = g_error_new_literal (NM_DEVICE_ERROR,
 		                             NM_DEVICE_ERROR_FAILED,
 		                             "Invalid flags specified");
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, context, error->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, NULL, context, error->message);
 		g_dbus_method_invocation_take_error (context, error);
 		return;
 	}
@@ -8723,7 +8723,7 @@ impl_device_reapply (NMDevice *self,
 		error = g_error_new_literal (NM_DEVICE_ERROR,
 		                             NM_DEVICE_ERROR_NOT_ACTIVE,
 		                             "Device is not activated");
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, context, error->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, NULL, context, error->message);
 		g_dbus_method_invocation_take_error (context, error);
 		return;
 	}
@@ -8739,7 +8739,7 @@ impl_device_reapply (NMDevice *self,
 		                                                  &error);
 		if (!connection) {
 			g_prefix_error (&error, "The settings specified are invalid: ");
-			nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, context, error->message);
+			nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_REAPPLY, self, FALSE, NULL, context, error->message);
 			g_dbus_method_invocation_take_error (context, error);
 			return;
 		}
@@ -8869,7 +8869,7 @@ disconnect_cb (NMDevice *self,
 
 	if (error) {
 		g_dbus_method_invocation_return_gerror (context, error);
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, FALSE, subject, error->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, FALSE, NULL, subject, error->message);
 		return;
 	}
 
@@ -8878,7 +8878,7 @@ disconnect_cb (NMDevice *self,
 		local = g_error_new_literal (NM_DEVICE_ERROR,
 		                             NM_DEVICE_ERROR_NOT_ACTIVE,
 		                             "Device is not active");
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, FALSE, subject, local->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, FALSE, NULL, subject, local->message);
 		g_dbus_method_invocation_take_error (context, local);
 	} else {
 		nm_device_set_autoconnect_intern (self, FALSE);
@@ -8887,7 +8887,7 @@ disconnect_cb (NMDevice *self,
 		                         NM_DEVICE_STATE_DEACTIVATING,
 		                         NM_DEVICE_STATE_REASON_USER_REQUESTED);
 		g_dbus_method_invocation_return_value (context, NULL);
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, TRUE, subject, NULL);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DISCONNECT, self, TRUE, NULL, subject, NULL);
 	}
 }
 
@@ -8938,12 +8938,12 @@ delete_cb (NMDevice *self,
 
 	if (error) {
 		g_dbus_method_invocation_return_gerror (context, error);
-		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DELETE, self, FALSE, subject, error->message);
+		nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DELETE, self, FALSE, NULL, subject, error->message);
 		return;
 	}
 
 	/* Authorized */
-	nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DELETE, self, TRUE, subject, NULL);
+	nm_audit_log_device_op (NM_AUDIT_OP_DEVICE_DELETE, self, TRUE, NULL, subject, NULL);
 	if (nm_device_unrealize (self, TRUE, &local))
 		g_dbus_method_invocation_return_value (context, NULL);
 	else
