@@ -2027,13 +2027,13 @@ write_ip4_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 	NMSettingIPConfig *s_ip4;
 	const char *value;
 	char *tmp;
-	char gw_key[64];
-	char netmask_key[64];
 	char addr_key[64];
 	char prefix_key[64];
+	char netmask_key[64];
+	char gw_key[64];
 	char *route_path = NULL;
-	guint i, num, n;
 	gint j;
+	guint i, num, n;
 	gint64 route_metric;
 	gint priority;
 	int timeout;
@@ -2162,7 +2162,7 @@ write_ip4_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 	}
 
 	/* Clear remaining IPADDR<n..255>, etc */
-	for (; i < 256; i++) {
+	for (i = n; i < 256; i++) {
 		nm_sprintf_buf (addr_key, "IPADDR%u", i);
 		nm_sprintf_buf (prefix_key, "PREFIX%u", i);
 		nm_sprintf_buf (netmask_key, "NETMASK%u", i);
