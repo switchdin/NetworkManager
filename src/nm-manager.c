@@ -67,6 +67,7 @@ static NMActiveConnection *_new_active_connection (NMManager *self,
                                                    const char *specific_object,
                                                    NMDevice *device,
                                                    NMAuthSubject *subject,
+                                                   NMActivationType activation_type,
                                                    GError **error);
 
 static void policy_activating_device_changed (GObject *object, GParamSpec *pspec, gpointer user_data);
@@ -1825,7 +1826,8 @@ assume_connection (NMManager *self, NMDevice *device, NMSettingsConnection *conn
 	g_return_val_if_fail (nm_device_get_state (device) >= NM_DEVICE_STATE_DISCONNECTED, FALSE);
 
 	subject = nm_auth_subject_new_internal ();
-	active = _new_active_connection (self, NM_CONNECTION (connection), NULL, NULL, device, subject, &error);
+	active = _new_active_connection (self, NM_CONNECTION (connection), NULL, NULL,
+	                                 device, subject, NM_ACTIVATION_TYPE_FULL, &error);
 	g_object_unref (subject);
 
 	if (!active) {
@@ -2752,6 +2754,7 @@ ensure_master_active_connection (NMManager *self,
 					                                            NULL,
 					                                            master_device,
 					                                            subject,
+					                                            NM_ACTIVATION_TYPE_FULL,
 					                                            error);
 					return master_ac;
 				}
@@ -2797,6 +2800,7 @@ ensure_master_active_connection (NMManager *self,
 			                                            NULL,
 			                                            candidate,
 			                                            subject,
+			                                            NM_ACTIVATION_TYPE_FULL,
 			                                            error);
 			return master_ac;
 		}
@@ -2943,6 +2947,7 @@ autoconnect_slaves (NMManager *self,
 			                                NULL,
 			                                nm_manager_get_best_device_for_connection (self, NM_CONNECTION (slave_connection), FALSE),
 			                                subject,
+			                                NM_ACTIVATION_TYPE_FULL,
 			                                &local_err);
 			if (local_err) {
 				_LOGW (LOGD_CORE, "Slave connection activation failed: %s", local_err->message);
@@ -3100,7 +3105,8 @@ _internal_activate_device (NMManager *self, NMActiveConnection *active, GError *
 				return FALSE;
 			}
 
-			parent_ac = nm_manager_activate_connection (self, parent_con, NULL, NULL, parent, subject, error);
+			parent_ac = nm_manager_activate_connection (self, parent_con, NULL, NULL, parent,
+			                                            subject, NM_ACTIVATION_TYPE_FULL, error);
 			if (!parent_ac) {
 				g_prefix_error (error, "%s failed to activate parent: ", nm_device_get_iface (device));
 				return FALSE;
@@ -3295,6 +3301,7 @@ _new_active_connection (NMManager *self,
                         const char *specific_object,
                         NMDevice *device,
                         NMAuthSubject *subject,
+                        NMActivationType activation_type,
                         GError **error)
 {
 	NMSettingsConnection *settings_connection = NULL;
@@ -3323,6 +3330,8 @@ _new_active_connection (NMManager *self,
 		settings_connection = (NMSettingsConnection *) connection;
 
 	if (is_vpn) {
+		if (activation_type != NM_ACTIVATION_TYPE_FULL)
+			g_return_val_if_reached (NULL);
 		return _new_vpn_active_connection (self,
 		                                   settings_connection,
 		                                   specific_object,
@@ -3334,6 +3343,7 @@ _new_active_connection (NMManager *self,
 	                                                  applied,
 	                                                  specific_object,
 	                                                  subject,
+	                                                  activation_type,
 	                                                  device);
 }
 
@@ -3386,6 +3396,8 @@ _internal_activation_auth_done (NMActiveConnection *active,
  * @specific_object: the specific object path, if any, for the activation
  * @device: the #NMDevice to activate @connection on
  * @subject: the subject which requested activation
+ * @activation_type: whether to assume the connection. That is, take over gracefully,
+ *   non-destructible.
  * @error: return location for an error
  *
  * Begins a new internally-initiated activation of @connection on @device.
@@ -3405,6 +3417,7 @@ nm_manager_activate_connection (NMManager *self,
                                 const char *specific_object,
                                 NMDevice *device,
                                 NMAuthSubject *subject,
+                                NMActivationType activation_type,
                                 GError **error)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
@@ -3451,6 +3464,7 @@ nm_manager_activate_connection (NMManager *self,
 	                                 specific_object,
 	                                 device,
 	                                 subject,
+	                                 activation_type,
 	                                 error);
 	if (active) {
 		priv->authorizing_connections = g_slist_prepend (priv->authorizing_connections, active);
@@ -3694,6 +3708,7 @@ impl_manager_activate_connection (NMManager *self,
 	                                 specific_object_path,
 	                                 device,
 	                                 subject,
+	                                 NM_ACTIVATION_TYPE_FULL,
 	                                 &error);
 	if (!active)
 		goto error;
@@ -3913,6 +3928,7 @@ impl_manager_add_and_activate_connection (NMManager *self,
 	                                 specific_object_path,
 	                                 device,
 	                                 subject,
+	                                 NM_ACTIVATION_TYPE_FULL,
 	                                 &error);
 	if (!active)
 		goto error;

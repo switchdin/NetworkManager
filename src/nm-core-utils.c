@@ -4339,3 +4339,14 @@ nm_utils_format_con_diff_for_audit (GHashTable *diff)
 
 	return g_string_free (str, FALSE);
 }
+
+/*****************************************************************************/
+
+NM_UTILS_LOOKUP_STR_DEFINE (nm_activation_type_to_string, NMActivationType,
+	NM_UTILS_LOOKUP_DEFAULT_WARN ("(unknown)"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_ACTIVATION_TYPE_FULL,   "full"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_ACTIVATION_TYPE_ASSUME, "assume"),
+)
+
+/*****************************************************************************/
+
