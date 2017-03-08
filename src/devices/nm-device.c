@@ -1597,13 +1597,13 @@ nm_device_get_physical_port_id (NMDevice *self)
 /*****************************************************************************/
 
 static gboolean
-nm_device_uses_generated_assumed_connection (NMDevice *self)
+nm_device_has_activation_type_external (NMDevice *self)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 	NMSettingsConnection *connection;
 
 	if (   priv->act_request
-	    && nm_active_connection_get_assumed (NM_ACTIVE_CONNECTION (priv->act_request))) {
+	    && nm_active_connection_has_activation_type_assume_or_external (NM_ACTIVE_CONNECTION (priv->act_request))) {
 		connection = nm_act_request_get_settings_connection (priv->act_request);
 		if (   connection
 		    && nm_settings_connection_get_garbage_collect (connection))
@@ -1613,12 +1613,12 @@ nm_device_uses_generated_assumed_connection (NMDevice *self)
 }
 
 gboolean
-nm_device_uses_assumed_connection (NMDevice *self)
+nm_device_has_activation_type_assume_or_external (NMDevice *self)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 
 	if (   priv->act_request
-	    && nm_active_connection_get_assumed (NM_ACTIVE_CONNECTION (priv->act_request)))
+	    && nm_active_connection_has_activation_type_assume_or_external (NM_ACTIVE_CONNECTION (priv->act_request)))
 		return TRUE;
 	return FALSE;
 }
@@ -3151,7 +3151,7 @@ nm_device_master_release_slaves (NMDevice *self)
 	gboolean configure = TRUE;
 
 	/* Don't release the slaves if this connection doesn't belong to NM. */
-	if (nm_device_uses_generated_assumed_connection (self))
+	if (nm_device_has_activation_type_external (self))
 		return;
 
 	reason = priv->state_reason;
@@ -4189,7 +4189,7 @@ master_ready (NMDevice *self,
 	/* If the master didn't change, add-slave only rechecks whether to assume a connection. */
 	nm_device_master_add_slave (master,
 	                            self,
-	                            nm_active_connection_get_assumed (active) ? FALSE : TRUE);
+	                            nm_active_connection_has_activation_type_assume_or_external (active) ? FALSE : TRUE);
 }
 
 static void
@@ -4269,7 +4269,7 @@ activate_stage1_device_prepare (NMDevice *self)
 	nm_device_state_changed (self, NM_DEVICE_STATE_PREPARE, NM_DEVICE_STATE_REASON_NONE);
 
 	/* Assumed connections were already set up outside NetworkManager */
-	if (!nm_active_connection_get_assumed (active)) {
+	if (!nm_active_connection_has_activation_type_assume_or_external (active)) {
 		NMDeviceStateReason failure_reason = NM_DEVICE_STATE_REASON_NONE;
 
 		ret = NM_DEVICE_GET_CLASS (self)->act_stage1_prepare (self, &failure_reason);
@@ -4330,7 +4330,7 @@ activate_stage2_device_config (NMDevice *self)
 	nm_device_state_changed (self, NM_DEVICE_STATE_CONFIG, NM_DEVICE_STATE_REASON_NONE);
 
 	/* Assumed connections were already set up outside NetworkManager */
-	if (!nm_active_connection_get_assumed (active)) {
+	if (!nm_active_connection_has_activation_type_assume_or_external (active)) {
 		NMDeviceStateReason failure_reason = NM_DEVICE_STATE_REASON_NONE;
 
 		if (!nm_device_bring_up (self, FALSE, &no_firmware)) {
@@ -4358,7 +4358,7 @@ activate_stage2_device_config (NMDevice *self)
 
 		if (slave_state == NM_DEVICE_STATE_IP_CONFIG)
 			nm_device_master_enslave_slave (self, info->slave, nm_device_get_applied_connection (info->slave));
-		else if (   nm_device_uses_generated_assumed_connection (self)
+		else if (   nm_device_has_activation_type_external (self)
 		         && slave_state <= NM_DEVICE_STATE_DISCONNECTED)
 			nm_device_queue_recheck_assume (info->slave);
 	}
@@ -4483,7 +4483,7 @@ check_ip_state (NMDevice *self, gboolean may_fail)
 	    && (priv->ip6_state == IP_FAIL || (ip6_ignore && priv->ip6_state == IP_DONE))) {
 		/* Either both methods failed, or only one failed and the other is
 		 * disabled */
-		if (nm_device_uses_assumed_connection (self)) {
+		if (nm_device_has_activation_type_assume_or_external (self)) {
 			/* We have assumed configuration, but couldn't redo it. No problem,
 			 * move to check state. */
 			_set_ip_state (self, AF_INET, IP_DONE);
@@ -4675,7 +4675,7 @@ ipv4_dad_start (NMDevice *self, NMIP4Config **configs, ArpingCallback cb)
 	    || !hw_addr
 	    || !hw_addr_len
 	    || !addr_found
-	    || nm_device_uses_assumed_connection (self)) {
+	    || nm_device_has_activation_type_assume_or_external (self)) {
 
 		/* DAD not needed, signal success */
 		cb (self, configs, TRUE);
@@ -4976,7 +4976,7 @@ ensure_con_ip4_config (NMDevice *self)
 	                             nm_connection_get_setting_ip4_config (connection),
 	                             nm_device_get_ip4_route_metric (self));
 
-	if (nm_device_uses_assumed_connection (self)) {
+	if (nm_device_has_activation_type_assume_or_external (self)) {
 		/* For assumed connections ignore all addresses and routes. */
 		nm_ip4_config_reset_addresses (priv->con_ip4_config);
 		nm_ip4_config_reset_routes (priv->con_ip4_config);
@@ -5002,7 +5002,7 @@ ensure_con_ip6_config (NMDevice *self)
 	                             nm_connection_get_setting_ip6_config (connection),
 	                             nm_device_get_ip6_route_metric (self));
 
-	if (nm_device_uses_assumed_connection (self)) {
+	if (nm_device_has_activation_type_assume_or_external (self)) {
 		/* For assumed connections ignore all addresses and routes. */
 		nm_ip6_config_reset_addresses (priv->con_ip6_config);
 		nm_ip6_config_reset_routes (priv->con_ip6_config);
@@ -5143,7 +5143,7 @@ ip4_config_merge_and_apply (NMDevice *self,
 	 * but if the IP method is automatic we need to update the default route to
 	 * maintain connectivity.
 	 */
-	if (nm_device_uses_generated_assumed_connection (self) && !auto_method)
+	if (nm_device_has_activation_type_external (self) && !auto_method)
 		goto END_ADD_DEFAULT_ROUTE;
 
 	/* At this point, we treat assumed and non-assumed connections alike.
@@ -5219,7 +5219,7 @@ END_ADD_DEFAULT_ROUTE:
 
 	routes_full_sync =    commit
 	                   && priv->v4_commit_first_time
-	                   && !nm_device_uses_assumed_connection (self);
+	                   && !nm_device_has_activation_type_assume_or_external (self);
 
 	success = nm_device_set_ip4_config (self, composite, default_route_metric, commit, routes_full_sync);
 	g_object_unref (composite);
@@ -5292,7 +5292,7 @@ dhcp4_fail (NMDevice *self, gboolean timeout)
 	 * device will transition to the ACTIVATED state without IP configuration),
 	 * retry DHCP again.
 	 */
-	if (nm_device_uses_assumed_connection (self)) {
+	if (nm_device_has_activation_type_assume_or_external (self)) {
 		dhcp_schedule_restart (self, AF_INET, "connection is assumed");
 		return;
 	}
@@ -5888,7 +5888,7 @@ ip6_config_merge_and_apply (NMDevice *self,
 	 * but if the IP method is automatic we need to update the default route to
 	 * maintain connectivity.
 	 */
-	if (nm_device_uses_generated_assumed_connection (self) && !auto_method)
+	if (nm_device_has_activation_type_external (self) && !auto_method)
 		goto END_ADD_DEFAULT_ROUTE;
 
 	/* At this point, we treat assumed and non-assumed connections alike.
@@ -5970,7 +5970,7 @@ END_ADD_DEFAULT_ROUTE:
 
 	routes_full_sync =    commit
 	                   && priv->v6_commit_first_time
-	                   && !nm_device_uses_assumed_connection (self);
+	                   && !nm_device_has_activation_type_assume_or_external (self);
 
 	success = nm_device_set_ip6_config (self, composite, commit, routes_full_sync);
 	g_object_unref (composite);
@@ -6084,7 +6084,7 @@ dhcp6_fail (NMDevice *self, gboolean timeout)
 		 * device will transition to the ACTIVATED state without IP configuration),
 		 * retry DHCP again.
 		 */
-		if (nm_device_uses_assumed_connection (self)) {
+		if (nm_device_has_activation_type_assume_or_external (self)) {
 			dhcp_schedule_restart (self, AF_INET6, "connection is assumed");
 			return;
 		}
@@ -6666,7 +6666,7 @@ _commit_mtu (NMDevice *self, const NMIP4Config *config)
 	if (ifindex <= 0)
 		return;
 
-	if (nm_device_uses_assumed_connection (self)) {
+	if (nm_device_has_activation_type_assume_or_external (self)) {
 		/* for assumed connections we don't tamper with the MTU. This is
 		 * a bug and supposed to be fixed by the unmanaged/assumed rework. */
 		return;
@@ -7333,7 +7333,7 @@ act_stage3_ip6_config_start (NMDevice *self,
 	 * IPv6LL if this is not an assumed connection, since assumed connections
 	 * will already have IPv6 set up.
 	 */
-	if (!nm_device_uses_assumed_connection (self))
+	if (!nm_device_has_activation_type_assume_or_external (self))
 		set_nm_ipv6ll (self, TRUE);
 
 	/* Re-enable IPv6 on the interface */
@@ -7363,7 +7363,7 @@ act_stage3_ip6_config_start (NMDevice *self,
 		_LOGW (LOGD_IP6, "unhandled IPv6 config method '%s'; will fail", method);
 
 	if (   ret != NM_ACT_STAGE_RETURN_FAILURE
-	    && !nm_device_uses_assumed_connection (self)) {
+	    && !nm_device_has_activation_type_assume_or_external (self)) {
 		switch (ip6_privacy) {
 		case NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN:
 		case NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED:
@@ -7606,7 +7606,7 @@ nm_device_activate_schedule_stage3_ip_config_start (NMDevice *self)
 	s_con = nm_connection_get_setting_connection (connection);
 
 	if (!priv->fw_ready) {
-		if (nm_device_uses_generated_assumed_connection (self))
+		if (nm_device_has_activation_type_external (self))
 			priv->fw_ready = TRUE;
 		else {
 			if (!priv->fw_call) {
@@ -7908,7 +7908,7 @@ activate_stage5_ip4_config_commit (NMDevice *self)
 
 	/* Interface must be IFF_UP before IP config can be applied */
 	ip_ifindex = nm_device_get_ip_ifindex (self);
-	if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex) && !nm_device_uses_assumed_connection (self)) {
+	if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex) && !nm_device_has_activation_type_assume_or_external (self)) {
 		nm_platform_link_set_up (NM_PLATFORM_GET, ip_ifindex, NULL);
 		if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex))
 			_LOGW (LOGD_DEVICE, "interface %s not up for IP configuration", nm_device_get_ip_iface (self));
@@ -8057,7 +8057,7 @@ activate_stage5_ip6_config_commit (NMDevice *self)
 
 	/* Interface must be IFF_UP before IP config can be applied */
 	ip_ifindex = nm_device_get_ip_ifindex (self);
-	if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex) && !nm_device_uses_assumed_connection (self)) {
+	if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex) && !nm_device_has_activation_type_assume_or_external (self)) {
 		nm_platform_link_set_up (NM_PLATFORM_GET, ip_ifindex, NULL);
 		if (!nm_platform_link_is_up (NM_PLATFORM_GET, ip_ifindex))
 			_LOGW (LOGD_DEVICE, "interface %s not up for IP configuration", nm_device_get_ip_iface (self));
@@ -9259,7 +9259,7 @@ nm_device_set_ip4_config (NMDevice *self,
 
 	/* Always commit to nm-platform to update lifetimes */
 	if (commit && new_config) {
-		gboolean assumed = nm_device_uses_assumed_connection (self);
+		gboolean assumed = nm_device_has_activation_type_assume_or_external (self);
 
 		_commit_mtu (self, new_config);
 		/* For assumed devices we must not touch the kernel-routes, such as the device-route.
@@ -9310,7 +9310,7 @@ nm_device_set_ip4_config (NMDevice *self,
 		if (old_config != priv->ip4_config)
 			nm_exported_object_clear_and_unexport (&old_config);
 
-		if (nm_device_uses_generated_assumed_connection (self)) {
+		if (nm_device_has_activation_type_external (self)) {
 			NMConnection *settings_connection = NM_CONNECTION (nm_device_get_settings_connection (self));
 			NMSetting *s_ip4;
 
@@ -9464,7 +9464,7 @@ nm_device_set_ip6_config (NMDevice *self,
 		if (old_config != priv->ip6_config)
 			nm_exported_object_clear_and_unexport (&old_config);
 
-		if (nm_device_uses_generated_assumed_connection (self)) {
+		if (nm_device_has_activation_type_external (self)) {
 			NMConnection *settings_connection = NM_CONNECTION (nm_device_get_settings_connection (self));
 			NMSetting *s_ip6;
 
@@ -10936,7 +10936,7 @@ nm_device_update_firewall_zone (NMDevice *self)
 
 	s_con = nm_connection_get_setting_connection (applied_connection);
 	if (   nm_device_get_state (self) == NM_DEVICE_STATE_ACTIVATED
-	    && !nm_device_uses_generated_assumed_connection (self)) {
+	    && !nm_device_has_activation_type_external (self)) {
 		nm_firewall_manager_add_or_change_zone (nm_firewall_manager_get (),
 		                                        nm_device_get_ip_iface (self),
 		                                        nm_setting_connection_get_zone (s_con),
@@ -11428,7 +11428,7 @@ _cleanup_generic_pre (NMDevice *self, CleanupType cleanup_type)
 	connection = nm_device_get_applied_connection (self);
 	if (   cleanup_type == CLEANUP_TYPE_DECONFIGURE
 	    && connection
-	    && !nm_device_uses_generated_assumed_connection (self)) {
+	    && !nm_device_has_activation_type_external (self)) {
 		nm_firewall_manager_remove_from_zone (nm_firewall_manager_get (),
 		                                      nm_device_get_ip_iface (self),
 		                                      NULL,
@@ -12144,7 +12144,7 @@ _set_state_full (NMDevice *self,
 		 */
 		_cancel_activation (self);
 
-		if (nm_device_uses_assumed_connection (self)) {
+		if (nm_device_has_activation_type_assume_or_external (self)) {
 			/* Avoid tearing down assumed connection, assume it's connected */
 			nm_device_queue_state (self,
 			                       NM_DEVICE_STATE_ACTIVATED,
@@ -12182,7 +12182,7 @@ _set_state_full (NMDevice *self,
 
 		if (   applied_connection
 		    && priv->ifindex != priv->ip_ifindex
-		    && !nm_device_uses_generated_assumed_connection (self)) {
+		    && !nm_device_has_activation_type_external (self)) {
 			NMSettingConnection *s_con;
 			const char *zone;
 
