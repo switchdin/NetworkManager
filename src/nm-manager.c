@@ -1688,8 +1688,6 @@ done:
 static gboolean
 match_connection_filter (NMConnection *connection, gpointer user_data)
 {
-	if (nm_settings_connection_get_garbage_collect (NM_SETTINGS_CONNECTION (connection)))
-		return FALSE;
 
 	return nm_device_check_connection_compatible (NM_DEVICE (user_data), connection);
 }
@@ -1808,7 +1806,10 @@ get_existing_connection (NMManager *self, NMDevice *device, gboolean *out_genera
 }
 
 static gboolean
-assume_connection (NMManager *self, NMDevice *device, NMSettingsConnection *connection)
+assume_connection (NMManager *self,
+                   NMDevice *device,
+                   NMSettingsConnection *connection,
+                   gboolean generated)
 {
 	NMActiveConnection *active, *master_ac;
 	NMAuthSubject *subject;
@@ -1827,7 +1828,9 @@ assume_connection (NMManager *self, NMDevice *device, NMSettingsConnection *conn
 
 	subject = nm_auth_subject_new_internal ();
 	active = _new_active_connection (self, NM_CONNECTION (connection), NULL, NULL,
-	                                 device, subject, NM_ACTIVATION_TYPE_ASSUME, &error);
+	                                 device, subject,
+	                                 generated ? NM_ACTIVATION_TYPE_EXTERNAL : NM_ACTIVATION_TYPE_ASSUME,
+	                                 &error);
 	g_object_unref (subject);
 
 	if (!active) {
@@ -1885,7 +1888,7 @@ recheck_assume_connection (NMManager *self, NMDevice *device)
 		                         NM_DEVICE_STATE_REASON_CONNECTION_ASSUMED);
 	}
 
-	success = assume_connection (self, device, connection);
+	success = assume_connection (self, device, connection, generated);
 	if (!success) {
 		if (was_unmanaged) {
 			nm_device_state_changed (device,
