@@ -225,6 +225,14 @@ nm_active_connection_set_state (NMActiveConnection *self,
 	       state_to_string (new_state),
 	       state_to_string (priv->state));
 
+	if (   new_state == NM_ACTIVE_CONNECTION_STATE_ACTIVATED
+	    && priv->activation_type == NM_ACTIVATION_TYPE_ASSUME) {
+		/* assuming connections mean to gracefully take over an externally
+		 * configured device. Once activation is complete, an assumed
+		 * activation *is* the same as a full activation. */
+		_set_activation_type (self, NM_ACTIVATION_TYPE_FULL);
+	}
+
 	old_state = priv->state;
 	priv->state = new_state;
 	priv->state_set = TRUE;
