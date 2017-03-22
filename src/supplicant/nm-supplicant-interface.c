@@ -1449,7 +1449,7 @@ nm_supplicant_interface_assoc (NMSupplicantInterface *self,
 	    && priv->pmf_support == NM_SUPPLICANT_FEATURE_YES) {
 		if (!nm_supplicant_config_enable_pmf_akm (cfg, &error)) {
 			_LOGW ("could not enable PMF AKMs in config: %s", error->message);
-			g_error_free (error);
+			g_clear_error (&error);
 		}
 	}
 
