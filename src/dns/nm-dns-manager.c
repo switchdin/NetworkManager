@@ -264,7 +264,7 @@ ip_config_data_ptr_compare (gconstpointer a, gconstpointer b)
 }
 
 static void
-add_string_item (GPtrArray *array, const char *str)
+add_string_item (GPtrArray *array, const char *str, gboolean dup)
 {
 	int i;
 
@@ -280,7 +280,7 @@ add_string_item (GPtrArray *array, const char *str)
 	}
 
 	/* No dupes, add the new item */
-	g_ptr_array_add (array, g_strdup (str));
+	g_ptr_array_add (array, dup ? g_strdup (str) : (gpointer) str);
 }
 
 static void
@@ -303,7 +303,7 @@ add_ip4_domains (GPtrArray *array, NMIP4Config *src)
 		domain = nm_ip4_config_get_search (src, i);
 		if (!domain_is_valid (domain))
 			continue;
-		add_string_item (array, domain);
+		add_string_item (array, domain, TRUE);
 	}
 
 	if (num_domains > 1 || !num_searches) {
@@ -311,7 +311,7 @@ add_ip4_domains (GPtrArray *array, NMIP4Config *src)
 			domain = nm_ip4_config_get_domain (src, i);
 			if (!domain_is_valid (domain))
 				continue;
-			add_string_item (array, domain);
+			add_string_item (array, domain, TRUE);
 		}
 	}
 }
@@ -324,7 +324,8 @@ merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src)
 	num = nm_ip4_config_get_num_nameservers (src);
 	for (i = 0; i < num; i++) {
 		add_string_item (rc->nameservers,
-		                 nm_utils_inet4_ntop (nm_ip4_config_get_nameserver (src, i), NULL));
+		                 nm_utils_inet4_ntop (nm_ip4_config_get_nameserver (src, i), NULL),
+		                 TRUE);
 	}
 
 	num = nm_ip4_config_get_num_dns_options (src);
@@ -341,7 +342,8 @@ merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src)
 	num = nm_ip4_config_get_num_nis_servers (src);
 	for (i = 0; i < num; i++) {
 		add_string_item (rc->nis_servers,
-		                 nm_utils_inet4_ntop (nm_ip4_config_get_nis_server (src, i), NULL));
+		                 nm_utils_inet4_ntop (nm_ip4_config_get_nis_server (src, i), NULL),
+		                 TRUE);
 	}
 
 	if (nm_ip4_config_get_nis_domain (src)) {
@@ -364,7 +366,7 @@ add_ip6_domains (GPtrArray *array, NMIP6Config *src)
 		domain = nm_ip6_config_get_search (src, i);
 		if (!domain_is_valid (domain))
 			continue;
-		add_string_item (array, domain);
+		add_string_item (array, domain, TRUE);
 	}
 
 	if (num_domains > 1 || !num_searches) {
@@ -372,7 +374,7 @@ add_ip6_domains (GPtrArray *array, NMIP6Config *src)
 			domain = nm_ip6_config_get_domain (src, i);
 			if (!domain_is_valid (domain))
 				continue;
-			add_string_item (array, domain);
+			add_string_item (array, domain, TRUE);
 		}
 	}
 }
@@ -399,7 +401,7 @@ merge_one_ip6_config (NMResolvConfData *rc, NMIP6Config *src, const char *iface)
 				g_strlcat (buf, iface, sizeof (buf));
 			}
 		}
-		add_string_item (rc->nameservers, buf);
+		add_string_item (rc->nameservers, buf, TRUE);
 	}
 
 	add_ip6_domains (rc->searches, src);
@@ -930,17 +932,17 @@ merge_global_dns_config (NMResolvConfData *rc, NMGlobalDnsConfig *global_conf)
 
 	for (i = 0; searches && searches[i]; i++) {
 		if (domain_is_valid (searches[i]))
-			add_string_item (rc->searches, searches[i]);
+			add_string_item (rc->searches, searches[i], TRUE);
 	}
 
 	for (i = 0; options && options[i]; i++)
-		add_string_item (rc->options, options[i]);
+		add_string_item (rc->options, options[i], TRUE);
 
 	default_domain = nm_global_dns_config_lookup_domain (global_conf, "*");
 	g_assert (default_domain);
 	servers = nm_global_dns_domain_get_servers (default_domain);
 	for (i = 0; servers && servers[i]; i++)
-		add_string_item (rc->nameservers, servers[i]);
+		add_string_item (rc->nameservers, servers[i], TRUE);
 
 	return TRUE;
 }
@@ -1071,9 +1073,9 @@ _collect_resolv_conf_data (NMDnsManager *self, /* only for logging context, no o
 		    && !nm_utils_ipaddr_valid (AF_UNSPEC, hostname)) {
 			hostdomain++;
 			if (domain_is_valid (hostdomain))
-				add_string_item (rc.searches, hostdomain);
+				add_string_item (rc.searches, hostdomain, TRUE);
 			else if (domain_is_valid (hostname))
-				add_string_item (rc.searches, hostname);
+				add_string_item (rc.searches, hostname, TRUE);
 		}
 	}
 
