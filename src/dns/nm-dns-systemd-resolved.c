@@ -229,7 +229,7 @@ free_pending_updates (NMDnsSystemdResolved *self)
 }
 
 static void
-prepare_one_interface (NMDnsSystemdResolved *self, InterfaceConfig *ic)
+prepare_one_interface (NMDnsSystemdResolved *self, InterfaceConfig *ic, gboolean wildcard)
 {
 	NMDnsSystemdResolvedPrivate *priv = NM_DNS_SYSTEMD_RESOLVED_GET_PRIVATE (self);
 	GVariantBuilder dns, domains;
@@ -251,6 +251,10 @@ prepare_one_interface (NMDnsSystemdResolved *self, InterfaceConfig *ic)
 		else
 			g_assert_not_reached ();
 	}
+
+	if (!wildcard)
+		add_domain (&domains, "~.");
+
 	g_variant_builder_close (&dns);
 	g_variant_builder_close (&domains);
 
@@ -291,6 +295,7 @@ send_updates (NMDnsSystemdResolved *self)
 static gboolean
 update (NMDnsPlugin *plugin,
         const NMDnsIPConfigData **configs,
+        gboolean wildcard_exists,
         const NMGlobalDnsConfig *global_config,
         const char *hostname)
 {
@@ -307,7 +312,7 @@ update (NMDnsPlugin *plugin,
 	for (i = 0; i < interfaces->len; i++) {
 		InterfaceConfig *ic = &g_array_index (interfaces, InterfaceConfig, i);
 
-		prepare_one_interface (self, ic);
+		prepare_one_interface (self, ic, wildcard_exists);
 		g_list_free (ic->configs);
 	}
 

@@ -162,11 +162,21 @@ domain_is_valid (const gchar *domain)
 {
 	if (*domain == '\0')
 		return FALSE;
+
+	if (nm_streq (domain, "."))
+		return TRUE;
+
 #if WITH_LIBPSL
 	if (psl_is_public_suffix (psl_builtin (), domain))
 		return FALSE;
 #endif
 	return TRUE;
+}
+
+static gboolean
+domain_is_wildcard (const char *domain)
+{
+	return nm_streq0 (domain, "~.");
 }
 
 /*****************************************************************************/
@@ -291,7 +301,8 @@ add_dns_option_item (GPtrArray *array, const char *str, gboolean ipv6)
 }
 
 static void
-add_ip4_domains (GPtrArray *array, NMIP4Config *src, gboolean dup, gboolean search_only)
+add_ip4_domains (GPtrArray *array, NMIP4Config *src, gboolean dup,
+                 gboolean search_only, gboolean *wildcard_found)
 {
 	unsigned num_domains, num_searches, i;
 	const char *domain;
@@ -301,11 +312,16 @@ add_ip4_domains (GPtrArray *array, NMIP4Config *src, gboolean dup, gboolean sear
 
 	for (i = 0; i < num_searches; i++) {
 		domain = nm_ip4_config_get_search (src, i);
+
+		if (domain_is_wildcard (domain))
+			NM_SET_OUT (wildcard_found, TRUE);
+
 		if (domain[0] == '~') {
 			if (search_only)
 				continue;
 			domain++;
 		}
+
 		if (!domain_is_valid (domain))
 			continue;
 		add_string_item (array, domain, dup);
@@ -314,6 +330,10 @@ add_ip4_domains (GPtrArray *array, NMIP4Config *src, gboolean dup, gboolean sear
 	if (num_domains > 1 || !num_searches) {
 		for (i = 0; i < num_domains; i++) {
 			domain = nm_ip4_config_get_domain (src, i);
+
+			if (domain_is_wildcard (domain))
+				NM_SET_OUT (wildcard_found, TRUE);
+
 			if (domain[0] == '~') {
 				if (search_only)
 					continue;
@@ -327,7 +347,7 @@ add_ip4_domains (GPtrArray *array, NMIP4Config *src, gboolean dup, gboolean sear
 }
 
 static void
-merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src)
+merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src, gboolean *wildcard_found)
 {
 	guint32 num, i;
 
@@ -346,7 +366,7 @@ merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src)
 		add_dns_option_item (rc->options, option, FALSE);
 	}
 
-	add_ip4_domains (rc->searches, src, TRUE, TRUE);
+	add_ip4_domains (rc->searches, src, TRUE, TRUE, wildcard_found);
 
 	/* NIS stuff */
 	num = nm_ip4_config_get_num_nis_servers (src);
@@ -364,7 +384,7 @@ merge_one_ip4_config (NMResolvConfData *rc, NMIP4Config *src)
 }
 
 static void
-add_ip6_domains (GPtrArray *array, NMIP6Config *src, gboolean dup, gboolean search_only)
+add_ip6_domains (GPtrArray *array, NMIP6Config *src, gboolean dup, gboolean search_only, gboolean *wildcard_found)
 {
 	unsigned num_domains, num_searches, i;
 	const char *domain;
@@ -374,6 +394,10 @@ add_ip6_domains (GPtrArray *array, NMIP6Config *src, gboolean dup, gboolean sear
 
 	for (i = 0; i < num_searches; i++) {
 		domain = nm_ip6_config_get_search (src, i);
+
+		if (domain_is_wildcard (domain))
+			NM_SET_OUT (wildcard_found, TRUE);
+
 		if (domain[0] == '~') {
 			if (search_only)
 				continue;
@@ -387,6 +411,10 @@ add_ip6_domains (GPtrArray *array, NMIP6Config *src, gboolean dup, gboolean sear
 	if (num_domains > 1 || !num_searches) {
 		for (i = 0; i < num_domains; i++) {
 			domain = nm_ip6_config_get_domain (src, i);
+
+			if (domain_is_wildcard (domain))
+				NM_SET_OUT (wildcard_found, TRUE);
+
 			if (domain[0] == '~') {
 				if (search_only)
 					continue;
@@ -400,7 +428,7 @@ add_ip6_domains (GPtrArray *array, NMIP6Config *src, gboolean dup, gboolean sear
 }
 
 static void
-merge_one_ip6_config (NMResolvConfData *rc, NMIP6Config *src, const char *iface)
+merge_one_ip6_config (NMResolvConfData *rc, NMIP6Config *src, const char *iface, gboolean *wildcard_found)
 {
 	guint32 num, i;
 
@@ -424,7 +452,7 @@ merge_one_ip6_config (NMResolvConfData *rc, NMIP6Config *src, const char *iface)
 		add_string_item (rc->nameservers, buf, TRUE);
 	}
 
-	add_ip6_domains (rc->searches, src, TRUE, TRUE);
+	add_ip6_domains (rc->searches, src, TRUE, TRUE, wildcard_found);
 
 	num = nm_ip6_config_get_num_dns_options (src);
 	for (i = 0; i < num; i++) {
@@ -437,12 +465,13 @@ merge_one_ip6_config (NMResolvConfData *rc, NMIP6Config *src, const char *iface)
 
 static void
 merge_one_ip_config_data (NMResolvConfData *rc,
-                          NMDnsIPConfigData *data)
+                          NMDnsIPConfigData *data,
+                          gboolean *wildcard_found)
 {
 	if (NM_IS_IP4_CONFIG (data->config))
-		merge_one_ip4_config (rc, (NMIP4Config *) data->config);
+		merge_one_ip4_config (rc, (NMIP4Config *) data->config, wildcard_found);
 	else if (NM_IS_IP6_CONFIG (data->config))
-		merge_one_ip6_config (rc, (NMIP6Config *) data->config, data->iface);
+		merge_one_ip6_config (rc, (NMIP6Config *) data->config, data->iface, wildcard_found);
 	else
 		g_return_if_reached ();
 }
@@ -1019,6 +1048,7 @@ _collect_resolv_conf_data (NMDnsManager *self, /* only for logging context, no o
                            const GPtrArray *configs,
                            const char *hostname,
                            char ***out_searches,
+                           gboolean *wildcard_found,
                            char ***out_options,
                            char ***out_nameservers,
                            char ***out_nis_servers,
@@ -1072,7 +1102,7 @@ _collect_resolv_conf_data (NMDnsManager *self, /* only for logging context, no o
 			}
 
 			if (!skip) {
-				merge_one_ip_config_data (&rc, current);
+				merge_one_ip_config_data (&rc, current, wildcard_found);
 				plugin_confs[i] = current;
 			}
 		}
@@ -1135,6 +1165,7 @@ update_dns (NMDnsManager *self,
 	NMConfigData *data;
 	NMGlobalDnsConfig *global_config;
 	gs_free NMDnsIPConfigData **plugin_confs = NULL;
+	gboolean wildcard_found = FALSE;
 
 	g_return_val_if_fail (!error || !*error, FALSE);
 
@@ -1168,8 +1199,8 @@ update_dns (NMDnsManager *self,
 	compute_hash (self, global_config, priv->hash);
 
 	_collect_resolv_conf_data (self, global_config, priv->configs, priv->hostname,
-	                           &searches, &options, &nameservers, &nis_servers, &nis_domain,
-	                           &plugin_confs);
+	                           &searches, &wildcard_found, &options, &nameservers,
+	                           &nis_servers, &nis_domain, &plugin_confs);
 
 	/* Let any plugins do their thing first */
 	if (priv->plugin) {
@@ -1188,6 +1219,7 @@ update_dns (NMDnsManager *self,
 		_LOGD ("update-dns: updating plugin %s", plugin_name);
 		if (!nm_dns_plugin_update (plugin,
 		                           (const NMDnsIPConfigData **) plugin_confs,
+		                           wildcard_found,
 		                           global_config,
 		                           priv->hostname)) {
 			_LOGW ("update-dns: plugin %s update failed", plugin_name);
@@ -1957,7 +1989,7 @@ _get_config_variant (NMDnsManager *self)
 				gs_unref_ptrarray GPtrArray *array = NULL;
 
 				array = g_ptr_array_sized_new (num);
-				add_ip4_domains (array, config, FALSE, FALSE);
+				add_ip4_domains (array, config, FALSE, FALSE, NULL);
 				if (array->len) {
 					g_variant_builder_init (&strv_builder, G_VARIANT_TYPE ("as"));
 					for (j = 0; j < array->len; j++) {
@@ -2003,7 +2035,7 @@ _get_config_variant (NMDnsManager *self)
 				gs_unref_ptrarray GPtrArray *array = NULL;
 
 				array = g_ptr_array_sized_new (num);
-				add_ip6_domains (array, config, FALSE, FALSE);
+				add_ip6_domains (array, config, FALSE, FALSE, NULL);
 				if (array->len) {
 					g_variant_builder_init (&strv_builder, G_VARIANT_TYPE ("as"));
 					for (j = 0; j < array->len; j++) {

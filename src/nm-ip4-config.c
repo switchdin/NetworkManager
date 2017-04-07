@@ -1845,10 +1845,13 @@ nm_ip4_config_add_search (NMIP4Config *config, const char *new)
 
 	search = g_strdup (new);
 
-	/* Remove trailing dot as it has no effect */
-	len = strlen (search);
-	if (search[len - 1] == '.')
-		search[len - 1] = 0;
+	/* Remove trailing dot as it has no effect, but accept the
+	 * special wildcard domain '~.' */
+	if (!nm_streq (search, "~.")) {
+		len = strlen (search);
+		if (search[len - 1] == '.')
+			search[len - 1] = 0;
+	}
 
 	if (!search[0]) {
 		g_free (search);

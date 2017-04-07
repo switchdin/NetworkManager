@@ -40,6 +40,7 @@ G_DEFINE_TYPE (NMDnsUnbound, nm_dns_unbound, NM_TYPE_DNS_PLUGIN)
 static gboolean
 update (NMDnsPlugin *plugin,
         const NMDnsIPConfigData **configs,
+        gboolean wildcard_exists,
         const NMGlobalDnsConfig *global_config,
         const char *hostname)
 {

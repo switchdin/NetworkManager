@@ -51,6 +51,7 @@ typedef struct {
 	 */
 	gboolean (*update) (NMDnsPlugin *self,
 	                    const NMDnsIPConfigData **configs,
+	                    gboolean wildcard_exists,
 	                    const NMGlobalDnsConfig *global_config,
 	                    const char *hostname);
 
@@ -81,6 +82,7 @@ const char *nm_dns_plugin_get_name (NMDnsPlugin *self);
 
 gboolean nm_dns_plugin_update (NMDnsPlugin *self,
                                const NMDnsIPConfigData **configs,
+                               gboolean wildcard_exists,
                                const NMGlobalDnsConfig *global_config,
                                const char *hostname);
 
