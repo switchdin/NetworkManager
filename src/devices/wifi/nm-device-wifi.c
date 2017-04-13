@@ -15,7 +15,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Copyright (C) 2005 - 2012 Red Hat, Inc.
+ * Copyright (C) 2005 - 2017 Red Hat, Inc.
  * Copyright (C) 2006 - 2008 Novell, Inc.
  */
 
@@ -119,6 +119,8 @@ typedef struct {
 	NMDeviceWifiCapabilities capabilities;
 
 	gint32 hw_addr_scan_expire;
+
+	guint             wps_timeout_id;
 } NMDeviceWifiPrivate;
 
 struct _NMDeviceWifi
@@ -168,6 +170,10 @@ static void supplicant_iface_bss_removed_cb (NMSupplicantInterface *iface,
 static void supplicant_iface_scan_done_cb (NMSupplicantInterface * iface,
                                            gboolean success,
                                            NMDeviceWifi * self);
+
+static void supplicant_iface_wps_credentials_cb (NMSupplicantInterface *iface,
+                                                 GVariant *credentials,
+                                                 NMDeviceWifi *self);
 
 static void supplicant_iface_notify_scanning_cb (NMSupplicantInterface * iface,
                                                  GParamSpec * pspec,
@@ -266,6 +272,10 @@ supplicant_interface_acquire (NMDeviceWifi *self)
 	g_signal_connect (priv->sup_iface,
 	                  NM_SUPPLICANT_INTERFACE_SCAN_DONE,
 	                  G_CALLBACK (supplicant_iface_scan_done_cb),
+	                  self);
+	g_signal_connect (priv->sup_iface,
+	                  NM_SUPPLICANT_INTERFACE_WPS_CREDENTIALS,
+	                  G_CALLBACK (supplicant_iface_wps_credentials_cb),
 	                  self);
 	g_signal_connect (priv->sup_iface,
 	                  "notify::"NM_SUPPLICANT_INTERFACE_SCANNING,
@@ -1747,6 +1757,7 @@ cleanup_association_attempt (NMDeviceWifi *self, gboolean disconnect)
 
 	nm_clear_g_source (&priv->sup_timeout_id);
 	nm_clear_g_source (&priv->link_timeout_id);
+	nm_clear_g_source (&priv->wps_timeout_id);
 	if (disconnect && priv->sup_iface)
 		nm_supplicant_interface_disconnect (priv->sup_iface);
 }
@@ -1789,9 +1800,12 @@ wifi_secrets_cb (NMActRequest *req,
 
 	if (error) {
 		_LOGW (LOGD_WIFI, "%s", error->message);
-		nm_device_state_changed (device,
-		                         NM_DEVICE_STATE_FAILED,
-		                         NM_DEVICE_STATE_REASON_NO_SECRETS);
+		if (!priv->wps_timeout_id) {
+			/* Fail the device only if the WPS period is over too. */
+			nm_device_state_changed (device,
+			                         NM_DEVICE_STATE_FAILED,
+			                         NM_DEVICE_STATE_REASON_NO_SECRETS);
+		}
 	} else
 		nm_device_activate_schedule_stage1_device_prepare (device);
 }
@@ -1807,12 +1821,112 @@ wifi_secrets_cancel (NMDeviceWifi *self)
 }
 
 static void
+supplicant_iface_wps_credentials_cb (NMSupplicantInterface *iface,
+                                     GVariant *credentials,
+                                     NMDeviceWifi *self)
+{
+	NMConnection *applied_connection;
+	NMSettingsConnection *settings_connection;
+	NMActRequest *req;
+	NMSettingWireless *s_wireless;
+	NMSettingWirelessSecurity *s_wsec;
+	GVariant *val;
+	const char *array;
+	char psk[33];
+	gsize len;
+
+	if (   nm_device_get_state (NM_DEVICE (self)) != NM_DEVICE_STATE_NEED_AUTH
+	    || !nm_device_has_unmodified_applied_connection (NM_DEVICE (self), NM_SETTING_COMPARE_FLAG_NONE)) {
+		_LOGI (LOGD_DEVICE | LOGD_WIFI, "The connection can't be updated with WPS secrets");
+		return;
+	}
+
+	_LOGI (LOGD_DEVICE | LOGD_WIFI, "Updating the connection with WPS secrets");
+
+	wifi_secrets_cancel (self);
+
+	applied_connection = nm_device_get_applied_connection (NM_DEVICE (self));
+	g_return_if_fail (NM_IS_CONNECTION (applied_connection));
+
+	req = nm_device_get_act_request (NM_DEVICE (self));
+	g_return_if_fail (NM_IS_ACT_REQUEST (req));
+
+	settings_connection = nm_act_request_get_settings_connection (req);
+	g_return_if_fail (NM_IS_SETTINGS_CONNECTION (settings_connection));
+
+	s_wireless = nm_connection_get_setting_wireless (applied_connection);
+	g_return_if_fail (s_wireless);
+
+	s_wsec = nm_connection_get_setting_wireless_security (applied_connection);
+
+	/* First update the applied connection. */
+	g_object_set (s_wireless,
+	              NM_SETTING_WIRELESS_WPS, NM_802_11_AP_WPS_DISABLED,
+	              NM_SETTING_WIRELESS_WPS_PIN, NULL,
+	              NULL);
+
+	if (!nm_setting_wireless_get_ssid (s_wireless))
+		val = g_variant_lookup_value (credentials, "SSID", G_VARIANT_TYPE_BYTESTRING);
+	else
+		val = NULL;
+	if (val) {
+		g_object_set (s_wireless,
+		              NM_SETTING_WIRELESS_SSID, g_variant_get_string (val, NULL),
+		              NULL);
+		g_variant_unref (val);
+	}
+
+	if (s_wsec)
+		val = g_variant_lookup_value (credentials, "Key", G_VARIANT_TYPE_BYTESTRING);
+	else
+		val = NULL;
+	if (val) {
+		array = g_variant_get_fixed_array (val, &len, 1);
+		if (len >= 8 || len <= 32) {
+			memcpy (psk, array, len);
+			psk[len] = '\0';
+			g_object_set (s_wsec,
+			              NM_SETTING_WIRELESS_SECURITY_PSK, psk,
+			              NULL);
+
+		}
+		g_variant_unref (val);
+	}
+
+	/* Now persist the changes in the settings connection. */
+	nm_settings_connection_replace_and_commit (settings_connection, applied_connection, NULL, NULL);
+
+	nm_device_activate_schedule_stage1_device_prepare (NM_DEVICE (self));
+}
+
+static gboolean
+wps_timeout_cb (gpointer user_data)
+{
+	NMDeviceWifi *self = NM_DEVICE_WIFI (user_data);
+	NMDeviceWifiPrivate *priv = NM_DEVICE_WIFI_GET_PRIVATE (self);
+
+	priv->wps_timeout_id = 0;
+	if (!priv->wifi_secrets_id) {
+		/* Fail only if the secrets are not being requested. */
+		nm_device_state_changed (NM_DEVICE (self),
+		                         NM_DEVICE_STATE_FAILED,
+		                         NM_DEVICE_STATE_REASON_NO_SECRETS);
+	}
+
+	return G_SOURCE_REMOVE;
+}
+
+static void
 wifi_secrets_get_secrets (NMDeviceWifi *self,
                           const char *setting_name,
                           NMSecretAgentGetSecretsFlags flags)
 {
 	NMDeviceWifiPrivate *priv = NM_DEVICE_WIFI_GET_PRIVATE (self);
 	NMActRequest *req;
+	NMConnection *connection;
+	NMSettingWireless *s_wireless;
+	const char *bssid = NULL;
+	NM80211WpsFlags wps;
 
 	wifi_secrets_cancel (self);
 
@@ -1827,6 +1941,21 @@ wifi_secrets_get_secrets (NMDeviceWifi *self,
 	                                                    wifi_secrets_cb,
 	                                                    self);
 	g_return_if_fail (priv->wifi_secrets_id);
+
+	connection = nm_act_request_get_applied_connection (req);
+	g_return_if_fail (connection);
+
+	s_wireless = nm_connection_get_setting_wireless (connection);
+	g_return_if_fail (s_wireless);
+
+	wps = nm_setting_wireless_get_wps (s_wireless);
+	if (wps == NM_802_11_AP_WPS_PBC || wps == NM_802_11_AP_WPS_PIN) {
+		priv->wps_timeout_id = g_timeout_add_seconds (30, wps_timeout_cb, self);
+		if (priv->current_ap)
+			bssid = nm_wifi_ap_get_address (priv->current_ap);
+		nm_supplicant_interface_enroll_wps (priv->sup_iface, wps, bssid,
+		                                    nm_setting_wireless_get_wps_pin (s_wireless));
+	}
 }
 
 /*
@@ -2055,6 +2184,7 @@ supplicant_iface_state_cb (NMSupplicantInterface *iface,
 	case NM_SUPPLICANT_INTERFACE_STATE_COMPLETED:
 		nm_clear_g_source (&priv->sup_timeout_id);
 		nm_clear_g_source (&priv->link_timeout_id);
+		nm_clear_g_source (&priv->wps_timeout_id);
 
 		/* If this is the initial association during device activation,
 		 * schedule the next activation stage.
@@ -2430,6 +2560,8 @@ act_stage1_prepare (NMDevice *device, NMDeviceStateReason *out_failure_reason)
 	s_wireless = nm_connection_get_setting_wireless (connection);
 	g_return_val_if_fail (s_wireless, NM_ACT_STAGE_RETURN_FAILURE);
 
+	nm_supplicant_interface_cancel_wps (priv->sup_iface);
+
 	mode = nm_setting_wireless_get_mode (s_wireless);
 	if (g_strcmp0 (mode, NM_SETTING_WIRELESS_MODE_INFRA) == 0)
 		priv->mode = NM_802_11_MODE_INFRA;
@@ -2577,6 +2709,7 @@ act_stage2_config (NMDevice *device, NMDeviceStateReason *out_failure_reason)
 
 	nm_clear_g_source (&priv->sup_timeout_id);
 	nm_clear_g_source (&priv->link_timeout_id);
+	nm_clear_g_source (&priv->wps_timeout_id);
 
 	req = nm_device_get_act_request (device);
 	g_return_val_if_fail (req, NM_ACT_STAGE_RETURN_FAILURE);
