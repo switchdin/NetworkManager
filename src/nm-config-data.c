@@ -324,6 +324,23 @@ nm_config_data_get_assume_ipv6ll_only (const NMConfigData *self, NMDevice *devic
 	return nm_device_spec_match_list (device, NM_CONFIG_DATA_GET_PRIVATE (self)->assume_ipv6ll_only);
 }
 
+int
+nm_config_data_get_sriov_num_vfs (const NMConfigData *self, NMDevice *device)
+{
+	gs_free char *value = NULL;
+	gboolean has_match;
+	gint num_vfs = -1;
+
+	g_return_val_if_fail (NM_IS_CONFIG_DATA (self), FALSE);
+	g_return_val_if_fail (NM_IS_DEVICE (device), FALSE);
+
+	value = nm_config_data_get_device_config (self, NM_CONFIG_KEYFILE_KEY_DEVICE_SRIOV_NUM_VFS, device, &has_match);
+	if (has_match)
+		num_vfs = _nm_utils_ascii_str_to_int64 (value, 10, 0, G_MAXINT32, -1);
+
+	return num_vfs;
+}
+
 GKeyFile *
 nm_config_data_clone_keyfile_intern (const NMConfigData *self)
 {
