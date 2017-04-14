@@ -14,7 +14,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Copyright (C) 2011 Red Hat, Inc.
+ * Copyright (C) 2011,2017 Red Hat, Inc.
  *
  */
 
@@ -70,6 +70,7 @@ complete_connection (const char *ssid,
                      guint32 flags,
                      guint32 wpa_flags,
                      guint32 rsn_flags,
+                     NM80211WpsFlags wps_flags,
                      gboolean lock_bssid,
                      NMConnection *src,
                      GError **error)
@@ -94,6 +95,7 @@ complete_connection (const char *ssid,
 	                                             flags,
 	                                             wpa_flags,
 	                                             rsn_flags,
+	                                             wps_flags,
 	                                             src,
 	                                             lock_bssid,
 	                                             error);
@@ -243,6 +245,9 @@ create_basic (const char *ssid,
 	else
 		g_assert_not_reached ();
 
+	/* WPS */
+	g_object_set (G_OBJECT (s_wifi), NM_SETTING_WIRELESS_WPS, NM_802_11_AP_WPS_DISABLED, NULL);
+
 	return connection;
 }
 
@@ -261,8 +266,10 @@ test_lock_bssid (void)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_NONE,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               TRUE,
 	                               src, &error);
+
 	expected = create_basic (ssid, bssid, NM_802_11_MODE_INFRA);
 	COMPARE (src, expected, success, error, 0, 0);
 
@@ -289,6 +296,7 @@ test_open_ap_empty_connection (void)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_NONE,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	expected = create_basic (ssid, NULL, NM_802_11_MODE_INFRA);
@@ -322,6 +330,7 @@ test_open_ap_leap_connection_1 (gconstpointer add_wifi)
 	success = complete_connection ("blahblah", bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_NONE,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure */
@@ -352,6 +361,7 @@ test_open_ap_leap_connection_2 (void)
 	success = complete_connection ("blahblah", bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_NONE,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure */
@@ -386,6 +396,7 @@ test_open_ap_wep_connection (gconstpointer add_wifi)
 	success = complete_connection ("blahblah", bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_NONE,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure */
@@ -402,6 +413,7 @@ test_ap_wpa_psk_connection_base (const char *key_mgmt,
                                  guint32 flags,
                                  guint32 wpa_flags,
                                  guint32 rsn_flags,
+                                 NM80211WpsFlags wps_flags,
                                  gboolean add_wifi,
                                  guint error_code,
                                  NMConnection *expected)
@@ -412,6 +424,7 @@ test_ap_wpa_psk_connection_base (const char *key_mgmt,
 	const KeyData exp_wifi[] = {
 		{ NM_SETTING_WIRELESS_SSID, ssid, 0 },
 		{ NM_SETTING_WIRELESS_MODE, "infrastructure", 0 },
+		{ NM_SETTING_WIRELESS_WPS, NULL, wps_flags },
 		{ NULL } };
 	const KeyData both_wsec[] = {
 	    { NM_SETTING_WIRELESS_SECURITY_KEY_MGMT, key_mgmt, 0 },
@@ -426,7 +439,7 @@ test_ap_wpa_psk_connection_base (const char *key_mgmt,
 		fill_wifi_empty (src);
 	fill_wsec (src, both_wsec);
 	success = complete_connection (ssid, bssid, NM_802_11_MODE_INFRA,
-	                               flags, wpa_flags, rsn_flags,
+	                               flags, wpa_flags, rsn_flags, wps_flags,
 	                               FALSE, src, &error);
 	if (expected) {
 		fill_wifi (expected, exp_wifi);
@@ -448,6 +461,7 @@ test_open_ap_wpa_psk_connection_1 (void)
 	                                 NM_802_11_AP_FLAGS_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_SETTING,
 	                                 NULL);
@@ -464,6 +478,7 @@ test_open_ap_wpa_psk_connection_2 (void)
 	                                 NM_802_11_AP_FLAGS_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 TRUE,
 	                                 NM_CONNECTION_ERROR_INVALID_SETTING,
 	                                 NULL);
@@ -479,6 +494,7 @@ test_open_ap_wpa_psk_connection_3 (void)
 	                                 NM_802_11_AP_FLAGS_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_SETTING,
 	                                 NULL);
@@ -495,6 +511,7 @@ test_open_ap_wpa_psk_connection_4 (void)
 	                                 NM_802_11_AP_FLAGS_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_SETTING,
 	                                 NULL);
@@ -510,6 +527,7 @@ test_open_ap_wpa_psk_connection_5 (void)
 	                                 NM_802_11_AP_FLAGS_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_SETTING,
 	                                 NULL);
@@ -523,6 +541,7 @@ test_ap_wpa_eap_connection_base (const char *key_mgmt,
                                  guint32 flags,
                                  guint32 wpa_flags,
                                  guint32 rsn_flags,
+                                 NM80211WpsFlags wps_flags,
                                  gboolean add_wifi,
                                  guint error_code)
 {
@@ -542,7 +561,7 @@ test_ap_wpa_eap_connection_base (const char *key_mgmt,
 	fill_wsec (src, src_wsec);
 	fill_8021x (src, src_empty);
 	success = complete_connection ("blahblah", bssid, NM_802_11_MODE_INFRA,
-	                               flags, wpa_flags, rsn_flags,
+	                               flags, wpa_flags, rsn_flags, wps_flags,
 	                               FALSE, src, &error);
 	/* Failure expected */
 	COMPARE (src, NULL, success, error, NM_CONNECTION_ERROR, error_code);
@@ -651,6 +670,7 @@ test_ap_wpa_eap_connection_1 (gconstpointer data)
 	                                 flags_for_idx (idx),
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 error_code_for_idx (idx, 1));
 }
@@ -664,6 +684,7 @@ test_ap_wpa_eap_connection_2 (gconstpointer data)
 	                                 flags_for_idx (idx),
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 TRUE,
 	                                 error_code_for_idx (idx, 2));
 }
@@ -677,6 +698,7 @@ test_ap_wpa_eap_connection_3 (gconstpointer data)
 	                                 flags_for_idx (idx),
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 error_code_for_idx (idx, 3));
 }
@@ -690,6 +712,7 @@ test_ap_wpa_eap_connection_4 (gconstpointer data)
 	                                 flags_for_idx (idx),
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 error_code_for_idx (idx, 4));
 }
@@ -703,6 +726,7 @@ test_ap_wpa_eap_connection_5 (gconstpointer data)
 	                                 flags_for_idx (idx),
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 error_code_for_idx (idx, 5));
 }
@@ -729,6 +753,7 @@ test_priv_ap_empty_connection (void)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 
@@ -774,6 +799,7 @@ test_priv_ap_leap_connection_1 (gconstpointer add_wifi)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect success here; since LEAP APs just set the 'privacy' flag
@@ -813,6 +839,7 @@ test_priv_ap_leap_connection_2 (void)
 	success = complete_connection ("blahblah", bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure here, we need a LEAP username */
@@ -857,6 +884,7 @@ test_priv_ap_dynamic_wep_1 (void)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 
@@ -905,6 +933,7 @@ test_priv_ap_dynamic_wep_2 (void)
 	success = complete_connection (ssid, bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 
@@ -947,6 +976,7 @@ test_priv_ap_dynamic_wep_3 (void)
 	success = complete_connection ("blahblah", bssid,
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               NM_802_11_AP_SEC_NONE, NM_802_11_AP_SEC_NONE,
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* Expect failure; shared is not compatible with dynamic WEP */
@@ -968,6 +998,7 @@ test_priv_ap_wpa_psk_connection_1 (void)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -984,6 +1015,7 @@ test_priv_ap_wpa_psk_connection_2 (void)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 TRUE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -1001,6 +1033,7 @@ test_priv_ap_wpa_psk_connection_3 (void)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -1018,6 +1051,7 @@ test_priv_ap_wpa_psk_connection_4 (void)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -1035,6 +1069,7 @@ test_priv_ap_wpa_psk_connection_5 (void)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 NM_802_11_AP_SEC_NONE,
 	                                 NM_802_11_AP_SEC_NONE,
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -1066,6 +1101,7 @@ test_wpa_ap_empty_connection (gconstpointer data)
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               wpa_flags_for_idx (idx),
 	                               rsn_flags_for_idx (idx),
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE, src, &error);
 
 	/* WPA connection expected */
@@ -1105,6 +1141,7 @@ test_wpa_ap_leap_connection_1 (gconstpointer data)
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               wpa_flags_for_idx (idx),
 	                               rsn_flags_for_idx (idx),
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* Expect failure here; WPA APs don't support old-school LEAP */
@@ -1139,6 +1176,7 @@ test_wpa_ap_leap_connection_2 (gconstpointer data)
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               wpa_flags_for_idx (idx),
 	                               rsn_flags_for_idx (idx),
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure here, we need a LEAP username */
@@ -1172,6 +1210,7 @@ test_wpa_ap_dynamic_wep_connection (gconstpointer data)
 	                               NM_802_11_MODE_INFRA, NM_802_11_AP_FLAGS_PRIVACY,
 	                               wpa_flags_for_idx (idx),
 	                               rsn_flags_for_idx (idx),
+	                               NM_802_11_AP_WPS_DISABLED,
 	                               FALSE,
 	                               src, &error);
 	/* We expect failure here since Dynamic WEP is incompatible with WPA */
@@ -1198,6 +1237,7 @@ test_wpa_ap_wpa_psk_connection_1 (gconstpointer data)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 expected);
@@ -1220,6 +1260,7 @@ test_wpa_ap_wpa_psk_connection_2 (gconstpointer data)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 TRUE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 expected);
@@ -1242,6 +1283,7 @@ test_wpa_ap_wpa_psk_connection_3 (gconstpointer data)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 expected);
@@ -1256,6 +1298,7 @@ test_wpa_ap_wpa_psk_connection_4 (gconstpointer data)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 NULL);
@@ -1277,6 +1320,7 @@ test_wpa_ap_wpa_psk_connection_5 (gconstpointer data)
 	                                 NM_802_11_AP_FLAGS_PRIVACY,
 	                                 wpa_flags_for_idx (idx),
 	                                 rsn_flags_for_idx (idx),
+	                                 NM_802_11_AP_WPS_DISABLED,
 	                                 FALSE,
 	                                 NM_CONNECTION_ERROR_INVALID_PROPERTY,
 	                                 expected);
