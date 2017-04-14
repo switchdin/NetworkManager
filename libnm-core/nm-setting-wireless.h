@@ -16,7 +16,7 @@
  * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA.
  *
- * Copyright 2007 - 2014 Red Hat, Inc.
+ * Copyright 2007 - 2017 Red Hat, Inc.
  * Copyright 2007 - 2008 Novell, Inc.
  */
 
@@ -57,6 +57,7 @@ G_BEGIN_DECLS
 #define NM_SETTING_WIRELESS_HIDDEN      "hidden"
 #define NM_SETTING_WIRELESS_POWERSAVE   "powersave"
 #define NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION   "mac-address-randomization"
+#define NM_SETTING_WIRELESS_WPS         "wps"
 
 /**
  * NM_SETTING_WIRELESS_MODE_ADHOC:
@@ -151,6 +152,9 @@ guint32           nm_setting_wireless_get_powersave          (NMSettingWireless 
 
 NM_AVAILABLE_IN_1_2
 NMSettingMacRandomization nm_setting_wireless_get_mac_address_randomization (NMSettingWireless *setting);
+
+NM_AVAILABLE_IN_1_10
+NM80211WpsFlags   nm_setting_wireless_get_wps                (NMSettingWireless *setting);
 
 gboolean          nm_setting_wireless_add_seen_bssid         (NMSettingWireless *setting,
                                                               const char *bssid);

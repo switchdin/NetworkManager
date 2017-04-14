@@ -16,7 +16,7 @@
  * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA.
  *
- * Copyright 2007 - 2014 Red Hat, Inc.
+ * Copyright 2007 - 2017 Red Hat, Inc.
  * Copyright 2007 - 2008 Novell, Inc.
  */
 
@@ -63,6 +63,7 @@ typedef struct {
 	gboolean hidden;
 	guint32 powersave;
 	NMSettingMacRandomization mac_address_randomization;
+	NM80211WpsFlags wps;
 } NMSettingWirelessPrivate;
 
 enum {
@@ -83,6 +84,7 @@ enum {
 	PROP_HIDDEN,
 	PROP_POWERSAVE,
 	PROP_MAC_ADDRESS_RANDOMIZATION,
+	PROP_WPS,
 
 	LAST_PROP
 };
@@ -732,6 +734,22 @@ nm_setting_wireless_get_seen_bssid (NMSettingWireless *setting,
 	return (const char *) g_slist_nth_data (NM_SETTING_WIRELESS_GET_PRIVATE (setting)->seen_bssids, i);
 }
 
+/**
+ * nm_setting_wireless_get_wps:
+ * @setting: the #NMSettingWireless
+ *
+ * Returns: the #NMSettingWireless:wps property of the setting
+ *
+ * Since: 1.10
+ **/
+NM80211WpsFlags
+nm_setting_wireless_get_wps (NMSettingWireless *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_WIRELESS (setting), 0);
+
+	return NM_SETTING_WIRELESS_GET_PRIVATE (setting)->wps;
+}
+
 static gboolean
 verify (NMSetting *setting, NMConnection *connection, GError **error)
 {
@@ -1061,6 +1079,9 @@ set_property (GObject *object, guint prop_id,
 	case PROP_MAC_ADDRESS_RANDOMIZATION:
 		priv->mac_address_randomization = g_value_get_uint (value);
 		break;
+	case PROP_WPS:
+		priv->wps = g_value_get_uint (value);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -1122,6 +1143,9 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_MAC_ADDRESS_RANDOMIZATION:
 		g_value_set_uint (value, nm_setting_wireless_get_mac_address_randomization (setting));
+		break;
+	case PROP_WPS:
+		g_value_set_uint (value, nm_setting_wireless_get_wps (setting));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1614,6 +1638,32 @@ nm_setting_wireless_class_init (NMSettingWirelessClass *setting_wireless_class)
 		 g_param_spec_uint (NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION, "", "",
 		                    0, G_MAXUINT32, NM_SETTING_MAC_RANDOMIZATION_DEFAULT,
 		                    G_PARAM_READWRITE |
+		                    G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingWireless:wps:
+	 *
+	 * Flags indicating which mode of WPS is to be used if any. In general,
+	 * this property is only relevant then the connection first activates
+	 * and WPS is used -- and even in that case there's little point in
+	 * changing the default setting as NetworkManager will automatically
+	 * determine whether it's feasible to start WPS enrollment from the
+	 * Access Point capabilities.
+	 *
+	 * NetworkManager will automatically disable WPS by setting this
+	 * property to a value of 1 after a successful WPS enrollment.
+	 *
+	 * Since: 1.10
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_WPS,
+		 g_param_spec_uint (NM_SETTING_WIRELESS_WPS, "", "",
+		                    NM_802_11_AP_WPS_AUTO,
+		                    NM_802_11_AP_WPS_PIN,
+		                    NM_802_11_AP_WPS_AUTO,
+		                    G_PARAM_READWRITE |
+		                    G_PARAM_CONSTRUCT |
+		                    NM_SETTING_PARAM_FUZZY_IGNORE |
 		                    G_PARAM_STATIC_STRINGS));
 
 	/* Compatibility for deprecated property */
