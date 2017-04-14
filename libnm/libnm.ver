@@ -1177,3 +1177,8 @@ global:
 	nm_utils_format_variant_attributes;
 	nm_utils_parse_variant_attributes;
 } libnm_1_6_0;
+
+libnm_1_10_0 {
+global:
+	nm_802_11_wps_flags_get_type;
+} libnm_1_8_0;
