@@ -58,6 +58,7 @@ G_BEGIN_DECLS
 #define NM_SETTING_WIRELESS_POWERSAVE   "powersave"
 #define NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION   "mac-address-randomization"
 #define NM_SETTING_WIRELESS_WPS         "wps"
+#define NM_SETTING_WIRELESS_WPS_PIN     "wps-pin"
 
 /**
  * NM_SETTING_WIRELESS_MODE_ADHOC:
@@ -155,6 +156,8 @@ NMSettingMacRandomization nm_setting_wireless_get_mac_address_randomization (NMS
 
 NM_AVAILABLE_IN_1_10
 NM80211WpsFlags   nm_setting_wireless_get_wps                (NMSettingWireless *setting);
+NM_AVAILABLE_IN_1_10
+const char       *nm_setting_wireless_get_wps_pin            (NMSettingWireless *setting);
 
 gboolean          nm_setting_wireless_add_seen_bssid         (NMSettingWireless *setting,
                                                               const char *bssid);

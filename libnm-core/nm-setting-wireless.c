@@ -64,6 +64,7 @@ typedef struct {
 	guint32 powersave;
 	NMSettingMacRandomization mac_address_randomization;
 	NM80211WpsFlags wps;
+	char *wps_pin;
 } NMSettingWirelessPrivate;
 
 enum {
@@ -85,6 +86,7 @@ enum {
 	PROP_POWERSAVE,
 	PROP_MAC_ADDRESS_RANDOMIZATION,
 	PROP_WPS,
+	PROP_WPS_PIN,
 
 	LAST_PROP
 };
@@ -750,6 +752,22 @@ nm_setting_wireless_get_wps (NMSettingWireless *setting)
 	return NM_SETTING_WIRELESS_GET_PRIVATE (setting)->wps;
 }
 
+/**
+ * nm_setting_wireless_get_wps_pin:
+ * @setting: the #NMSettingWireless
+ *
+ * Returns: the #NMSettingWireless:wps-pin property of the setting
+ *
+ * Since: 1.10
+ **/
+const char *
+nm_setting_wireless_get_wps_pin (NMSettingWireless *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_WIRELESS (setting), 0);
+
+	return NM_SETTING_WIRELESS_GET_PRIVATE (setting)->wps_pin;
+}
+
 static gboolean
 verify (NMSetting *setting, NMConnection *connection, GError **error)
 {
@@ -1082,6 +1100,10 @@ set_property (GObject *object, guint prop_id,
 	case PROP_WPS:
 		priv->wps = g_value_get_uint (value);
 		break;
+	case PROP_WPS_PIN:
+		g_free (priv->wps_pin);
+		priv->wps_pin = g_value_dup_string (value);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -1146,6 +1168,9 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_WPS:
 		g_value_set_uint (value, nm_setting_wireless_get_wps (setting));
+		break;
+	case PROP_WPS_PIN:
+		g_value_set_string (value, nm_setting_wireless_get_wps_pin (setting));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1665,6 +1690,24 @@ nm_setting_wireless_class_init (NMSettingWirelessClass *setting_wireless_class)
 		                    G_PARAM_CONSTRUCT |
 		                    NM_SETTING_PARAM_FUZZY_IGNORE |
 		                    G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingWireless:wps-pin:
+	 *
+	 * The PIN used for WPS.
+	 *
+	 * NetworkManager will automatically disable WPS and unset this property
+	 * after a successful WPS enrollment.
+	 *
+	 * Since: 1.10
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_WPS_PIN,
+		 g_param_spec_string (NM_SETTING_WIRELESS_WPS_PIN, "", "",
+		                      NULL,
+		                      G_PARAM_READWRITE |
+		                      NM_SETTING_PARAM_FUZZY_IGNORE |
+		                      G_PARAM_STATIC_STRINGS));
 
 	/* Compatibility for deprecated property */
 	/* ---ifcfg-rh---
